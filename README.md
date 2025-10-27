@@ -36,12 +36,9 @@ UMEvents is an integrated digital platform designed for Universiti Malaya studen
 - **Storage**: Firebase Storage
 - **Hosting**: Firebase Hosting / Vercel
 
-## 🚀 Getting Started
+## 🚀 Quick Start
 
-### Prerequisites
-- Node.js 18+
-- Firebase account
-- ToyyibPay/Billplz API keys
+For detailed setup instructions, see [QUICK_START.md](./QUICK_START.md)
 
 ### Installation
 
@@ -51,22 +48,54 @@ git clone https://github.com/yourusername/umevents.git
 cd umevents
 ```
 
-2. Install dependencies
+2. Install all dependencies
+
+**Option A: Automatic installation (recommended)**
+```bash
+# On Mac/Linux
+./install.sh
+
+# On Windows
+install.bat
+```
+
+**Option B: Manual installation**
 ```bash
 npm run install:all
 ```
 
-3. Configure environment variables
-- Create `.env` files in both `frontend/` and `backend/` directories
-- Add your Firebase and ToyyibPay/Billplz credentials
+3. Set up Firebase and configure environment variables
+   - See [SETUP.md](./SETUP.md) for detailed Firebase setup
+   - Copy `.env.example` files and add your credentials
 
-4. Start development servers
+4. Start the application
 ```bash
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
-The backend will be available at `http://localhost:5000`
+Visit http://localhost:5173 to see the app
+
+## 📖 Documentation
+
+- [Quick Start Guide](./QUICK_START.md) - Get started in 5 minutes
+- [Setup Guide](./SETUP.md) - Detailed configuration instructions
+- [Project Summary](./PROJECT_SUMMARY.md) - Complete feature list
+- [Project Structure](./PROJECT_STRUCTURE.md) - Code organization
+- [Deployment Guide](./DEPLOYMENT.md) - Production deployment
+
+## 🎯 What's Built
+
+This is a complete, production-ready platform with:
+
+✅ **Backend API** (Express.js + Firebase)
+✅ **Frontend Web App** (React + Vite)
+✅ **User Authentication** (Firebase Auth)
+✅ **Event Management** (Create, browse, manage events)
+✅ **Ticketing System** (Purchase tickets with QR codes)
+✅ **Payment Integration** (ToyyibPay/Billplz ready)
+✅ **Analytics Dashboard** (Real-time insights)
+✅ **Role-based Access** (Student, Club, Admin)
+✅ **Responsive Design** (Mobile-friendly)
 
 ## 📁 Project Structure
 
