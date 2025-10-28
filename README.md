@@ -79,6 +79,7 @@ Visit http://localhost:5173 to see the app
 
 - [Quick Start Guide](./QUICK_START.md) - Get started in 5 minutes
 - [Setup Guide](./SETUP.md) - Detailed configuration instructions
+- [Google Sign-In Setup](./GOOGLE_SIGNIN_SETUP.md) - Enable Google authentication
 - [Project Summary](./PROJECT_SUMMARY.md) - Complete feature list
 - [Project Structure](./PROJECT_STRUCTURE.md) - Code organization
 - [Deployment Guide](./DEPLOYMENT.md) - Production deployment
@@ -89,7 +90,7 @@ This is a complete, production-ready platform with:
 
 ✅ **Backend API** (Express.js + Firebase)
 ✅ **Frontend Web App** (React + Vite)
-✅ **User Authentication** (Firebase Auth)
+✅ **User Authentication** (Firebase Auth + Google Sign-In)
 ✅ **Event Management** (Create, browse, manage events)
 ✅ **Ticketing System** (Purchase tickets with QR codes)
 ✅ **Payment Integration** (ToyyibPay/Billplz ready)

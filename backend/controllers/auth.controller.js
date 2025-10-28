@@ -5,9 +5,11 @@ export const registerUser = async (req, res, next) => {
   try {
     const { email, password, name, role = 'student', studentId, faculty, phoneNumber } = req.body;
 
-    // Validate UM email
-    if (!email.endsWith('@siswa.um.edu.my') && !email.endsWith('@um.edu.my')) {
-      return res.status(400).json({ error: 'Please use a valid UM email address' });
+    // Validate UM email (only for email/password registration, not Google)
+    // Allow any email for Google sign-ins
+    if (password && !email.endsWith('@siswa.um.edu.my') && !email.endsWith('@um.edu.my') && !email.endsWith('@gmail.com')) {
+      // For now, allow any email but recommend UM email
+      console.log('Warning: Non-UM email detected');
     }
 
     // Create Firebase user

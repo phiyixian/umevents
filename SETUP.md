@@ -45,7 +45,7 @@ npm install
 3. Enable Authentication:
    - Go to Authentication > Sign-in method
    - Enable Email/Password
-   - Enable Google (optional)
+   - Enable Google (recommended - see [GOOGLE_SIGNIN_SETUP.md](./GOOGLE_SIGNIN_SETUP.md))
 4. Create a Firestore Database:
    - Go to Firestore Database
    - Create database in production mode

@@ -40,6 +40,35 @@ export const AuthProvider = ({ children }) => {
               email: firebaseUser.email,
               ...userData
             });
+          } else {
+            // First-time Google sign-in - create user document
+            if (firebaseUser.providerData[0]?.providerId === 'google.com') {
+              try {
+                const userData = {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  name: firebaseUser.displayName || 'User',
+                  photoURL: firebaseUser.photoURL,
+                  role: 'student',
+                  provider: 'google',
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                };
+                
+                // Create user document
+                const { doc: document, setDoc } = await import('firebase/firestore');
+                await setDoc(document(db, 'users', firebaseUser.uid), userData);
+                
+                setUserStore({
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  ...userData
+                });
+              } catch (error) {
+                console.error('Error creating user document:', error);
+                setUser(firebaseUser);
+              }
+            }
           }
           setUser(firebaseUser);
         } catch (error) {
@@ -80,10 +109,38 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user document exists
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      
+      if (!userDoc.exists()) {
+        // First-time Google sign-in - create user document
+        const { doc: document, setDoc } = await import('firebase/firestore');
+        const userData = {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || 'User',
+          photoURL: user.photoURL,
+          role: 'student',
+          provider: 'google',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        await setDoc(document(db, 'users', user.uid), userData);
+        setUserStore({
+          uid: user.uid,
+          email: user.email,
+          ...userData
+        });
+      }
+      
       toast.success('Logged in with Google!');
     } catch (error) {
-      toast.error(error.message);
+      console.error('Google sign-in error:', error);
+      toast.error(error.message || 'Failed to sign in with Google');
       throw error;
     }
   };
