@@ -3,19 +3,23 @@ import {
   initiateTicketPayment,
   handleToyyibPayCallback,
   getPaymentStatus,
+  getMyTransactions,
   getOrganizerFinance,
   updateClubPaymentSettings,
   applyToyyibPayForClub,
   approveToyyibPayForClub
 } from '../controllers/payment.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { paymentLimiter } from '../middleware/rateLimiter.js';
+import { paymentLimiter, paymentStatusLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 // Ticket purchase payment (protected)
 router.post('/tickets/purchase', authenticate, paymentLimiter, initiateTicketPayment);
-router.get('/status/:paymentId', authenticate, getPaymentStatus);
+// Payment status check - more lenient rate limiting for polling
+router.get('/status/:paymentId', authenticate, paymentStatusLimiter, getPaymentStatus);
+// User transaction history
+router.get('/transactions/my', authenticate, getMyTransactions);
 
 // ToyyibPay callback (webhook - no auth)
 router.post('/toyyibpay/callback', handleToyyibPayCallback);

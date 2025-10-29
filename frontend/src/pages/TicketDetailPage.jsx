@@ -107,14 +107,73 @@ const TicketDetailPage = () => {
                 <p className="font-mono text-sm">{ticket.id}</p>
               </div>
 
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-1">Status</p>
+              <div className="mt-4 mb-4">
+                <p className="text-sm text-gray-600 mb-1">Ticket Status</p>
                 <span className={`px-3 py-1 rounded-full text-sm inline-block ${
-                  ticket.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  ticket.status === 'confirmed' ? 'bg-green-100 text-green-800' : 
+                  ticket.status === 'paid' ? 'bg-blue-100 text-blue-800' :
+                  ticket.status === 'used' ? 'bg-gray-100 text-gray-800' :
+                  'bg-yellow-100 text-yellow-800'
                 }`}>
-                  {ticket.status}
+                  {ticket.status === 'paid' ? 'Paid (Pending Confirmation)' : 
+                   ticket.status === 'confirmed' ? 'Confirmed' :
+                   ticket.status === 'used' ? 'Used' :
+                   ticket.status.replace('_', ' ')}
                 </span>
               </div>
+
+              {/* Payment/Transaction Information */}
+              {ticket.payment && (
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-lg font-semibold mb-3">Transaction Information</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Payment Status:</span>
+                      <span className={`font-medium ${
+                        ticket.payment.status === 'completed' ? 'text-green-600' : 
+                        ticket.payment.status === 'pending' ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {ticket.payment.status === 'completed' ? 'Paid ✓' : ticket.payment.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Payment Method:</span>
+                      <span className="font-medium capitalize">{ticket.payment.method || 'ToyyibPay'}</span>
+                    </div>
+                    {ticket.payment.transactionId && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Transaction ID:</span>
+                        <span className="font-mono text-xs">{ticket.payment.transactionId}</span>
+                      </div>
+                    )}
+                    {ticket.payment.billcode && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Bill Code:</span>
+                        <span className="font-mono text-xs">{ticket.payment.billcode}</span>
+                      </div>
+                    )}
+                    {ticket.payment.completedAt && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Paid At:</span>
+                        <span className="font-medium">{formatDate(ticket.payment.completedAt)}</span>
+                      </div>
+                    )}
+                    {ticket.paidAt && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Ticket Paid At:</span>
+                        <span className="font-medium">{formatDate(ticket.paidAt)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {ticket.purchaseDate && (
+                <div className="border-t pt-4 mt-4">
+                  <p className="text-sm text-gray-600">Purchased: {formatDate(ticket.purchaseDate)}</p>
+                </div>
+              )}
             </div>
 
             {/* QR Code */}

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useQuery, useMutation } from 'react-query';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import api from '../config/axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
@@ -11,16 +11,49 @@ const EventDetailPage = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { role } = useUserStore();
 
-  const { data: eventData, isLoading } = useQuery(
+  const { data: eventData, isLoading, refetch } = useQuery(
     ['event', id],
     async () => {
       const response = await api.get(`/events/${id}`);
       return response.data;
+    },
+    {
+      refetchOnWindowFocus: false,
+      refetchOnMount: true, // Refetch when returning to page
+      refetchOnReconnect: false,
+      staleTime: 10000, // Reduced to 10 seconds to allow updates
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
     }
   );
+
+  // Check if user returned from payment
+  useEffect(() => {
+    if (location.state?.paymentSuccess) {
+      toast.success(location.state.message || 'Ticket successfully purchased!', {
+        duration: 5000,
+        icon: '🎉'
+      });
+      // Invalidate and refetch event data to get updated ticketsSold
+      queryClient.invalidateQueries(['event', id]);
+      refetch();
+      // Clear the state so it doesn't show again on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.paymentFailed) {
+      toast.error('Payment failed. Please try again.', {
+        duration: 5000
+      });
+      // Refetch event data in case availability changed
+      refetch();
+      // Clear the state
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate, location.pathname, id, queryClient, refetch]);
 
   const buyTicketMutation = useMutation(
     async () => {
@@ -39,7 +72,9 @@ const EventDetailPage = () => {
         }
         // Navigate to payment status page to poll until completed
         if (data?.paymentId) {
-          navigate(`/payment/status/${data.paymentId}`);
+          navigate(`/payment/status/${data.paymentId}`, {
+            state: { eventId: id } // Pass eventId so we can invalidate the query
+          });
         } else {
           toast.success('Payment initiated.');
         }

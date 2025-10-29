@@ -109,13 +109,33 @@ export const getMyTickets = async (req, res, next) => {
         }
       }
       
+      // Get payment information if paymentId exists
+      let payment = null;
+      if (ticketData.paymentId) {
+        const paymentDoc = await db.collection('payments').doc(ticketData.paymentId).get();
+        if (paymentDoc.exists) {
+          const paymentData = paymentDoc.data();
+          payment = {
+            id: paymentDoc.id,
+            status: paymentData.status,
+            totalAmount: paymentData.totalAmount || paymentData.amount || 0,
+            method: paymentData.method || 'toyyibpay',
+            transactionId: paymentData.transactionId,
+            completedAt: paymentData.completedAt?.toDate ? paymentData.completedAt.toDate().toISOString() : paymentData.completedAt
+          };
+        }
+      }
+      
       // Convert ticket dates as well
       const ticket = {
         id: doc.id,
         ...ticketData,
         purchaseDate: ticketData.purchaseDate?.toDate ? ticketData.purchaseDate.toDate().toISOString() : ticketData.purchaseDate,
+        paidAt: ticketData.paidAt?.toDate ? ticketData.paidAt.toDate().toISOString() : ticketData.paidAt,
+        confirmedAt: ticketData.confirmedAt?.toDate ? ticketData.confirmedAt.toDate().toISOString() : ticketData.confirmedAt,
         checkedInAt: ticketData.checkedInAt?.toDate ? ticketData.checkedInAt.toDate().toISOString() : ticketData.checkedInAt,
-        event
+        event,
+        payment
       };
       
       tickets.push(ticket);
@@ -155,14 +175,45 @@ export const getTicketById = async (req, res, next) => {
 
     // Get event details
     const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
-
-    res.json({
-      ticket: {
-        id: ticketDoc.id,
-        ...ticketData,
-        event: eventDoc.exists ? { id: eventDoc.id, ...eventDoc.data() } : null
+    
+    // Get payment information if paymentId exists
+    let payment = null;
+    if (ticketData.paymentId) {
+      const paymentDoc = await db.collection('payments').doc(ticketData.paymentId).get();
+      if (paymentDoc.exists) {
+        const paymentData = paymentDoc.data();
+        payment = {
+          id: paymentDoc.id,
+          status: paymentData.status,
+          totalAmount: paymentData.totalAmount || paymentData.amount || 0,
+          method: paymentData.method || 'toyyibpay',
+          transactionId: paymentData.transactionId,
+          billcode: paymentData.billcode,
+          createdAt: paymentData.createdAt?.toDate ? paymentData.createdAt.toDate().toISOString() : paymentData.createdAt,
+          completedAt: paymentData.completedAt?.toDate ? paymentData.completedAt.toDate().toISOString() : paymentData.completedAt,
+          processedAt: paymentData.processedAt?.toDate ? paymentData.processedAt.toDate().toISOString() : paymentData.processedAt
+        };
       }
-    });
+    }
+
+    // Convert Firestore timestamps to ISO strings
+    const ticket = {
+      id: ticketDoc.id,
+      ...ticketData,
+      purchaseDate: ticketData.purchaseDate?.toDate ? ticketData.purchaseDate.toDate().toISOString() : ticketData.purchaseDate,
+      paidAt: ticketData.paidAt?.toDate ? ticketData.paidAt.toDate().toISOString() : ticketData.paidAt,
+      confirmedAt: ticketData.confirmedAt?.toDate ? ticketData.confirmedAt.toDate().toISOString() : ticketData.confirmedAt,
+      checkedInAt: ticketData.checkedInAt?.toDate ? ticketData.checkedInAt.toDate().toISOString() : ticketData.checkedInAt,
+      event: eventDoc.exists ? { 
+        id: eventDoc.id, 
+        ...eventDoc.data(),
+        startDate: eventDoc.data().startDate?.toDate ? eventDoc.data().startDate.toDate().toISOString() : eventDoc.data().startDate,
+        endDate: eventDoc.data().endDate?.toDate ? eventDoc.data().endDate.toDate().toISOString() : eventDoc.data().endDate
+      } : null,
+      payment
+    };
+
+    res.json({ ticket });
   } catch (error) {
     next(error);
   }

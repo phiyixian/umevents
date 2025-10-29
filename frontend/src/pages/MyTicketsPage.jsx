@@ -1,13 +1,32 @@
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from 'react-query';
 import api from '../config/axios';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
 const MyTicketsPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const { data: ticketsData, isLoading } = useQuery('myTickets', async () => {
     const response = await api.get('/tickets/my');
     return response.data;
+  }, {
+    refetchOnMount: true, // Refetch when navigating to this page to show new tickets
   });
+
+  // Check if user returned from successful payment
+  useEffect(() => {
+    if (location.state?.paymentSuccess) {
+      toast.success(location.state.message || 'Payment successful! Your ticket has been purchased.', {
+        duration: 5000,
+        icon: '🎉'
+      });
+      // Clear the state so it doesn't show again on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate, location.pathname]);
 
   const tickets = ticketsData?.tickets || [];
 
@@ -49,10 +68,17 @@ const MyTicketsPage = () => {
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm ${
                       ticket.status === 'confirmed' ? 'bg-green-100 text-green-800' : 
+                      ticket.status === 'paid' ? 'bg-blue-100 text-blue-800' :
                       ticket.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' :
+                      ticket.status === 'used' ? 'bg-gray-100 text-gray-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
-                      {ticket.status.replace('_', ' ')}
+                      {ticket.status === 'paid' ? 'Paid' : 
+                       ticket.status === 'confirmed' ? 'Confirmed' :
+                       ticket.status.replace('_', ' ')}
+                      {ticket.payment?.status === 'completed' && ticket.status !== 'paid' && ticket.status !== 'confirmed' && (
+                        <span className="ml-1">(Paid)</span>
+                      )}
                     </span>
                   </div>
 

@@ -19,6 +19,7 @@ import ClubRegisterPage from './pages/ClubRegisterPage';
 import RoleSelectPage from './pages/RoleSelectPage';
 import AdminVerificationPage from './pages/AdminVerificationPage';
 import PaymentStatusPage from './pages/PaymentStatusPage';
+import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import DashboardPage from './pages/DashboardPage';
 import MyTicketsPage from './pages/MyTicketsPage';
 import TicketDetailPage from './pages/TicketDetailPage';
@@ -31,6 +32,7 @@ import ClubIntroPage from './pages/ClubIntroPage';
 import ProfilePage from './pages/ProfilePage';
 import StudentProfilePage from './pages/StudentProfilePage';
 import ClubProfilePage from './pages/ClubProfilePage';
+import TransactionHistoryPage from './pages/TransactionHistoryPage';
 
 // Create a client
 const queryClient = new QueryClient();
@@ -86,6 +88,7 @@ function AppRoutes() {
       <Route path="/student-register" element={<UserRegisterPage />} />
       <Route path="/club-register" element={<ClubRegisterPage />} />
       <Route path="/payment/status/:paymentId" element={<PaymentStatusPage />} />
+      <Route path="/payment/success" element={<PaymentSuccessPage />} />
       
       {/* Main Routes with Layout */}
       <Route path="/" element={<MainLayout />}>
@@ -119,6 +122,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="student">
               <TicketDetailPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="transactions" 
+          element={
+            <ProtectedRoute excludeRole="admin">
+              <TransactionHistoryPage />
             </ProtectedRoute>
           } 
         />

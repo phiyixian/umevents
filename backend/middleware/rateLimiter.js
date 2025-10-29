@@ -20,3 +20,10 @@ export const paymentLimiter = rateLimit({
   message: 'Too many payment requests, please try again later.',
 });
 
+// More lenient rate limiter for payment status checks (polling)
+export const paymentStatusLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // Allow 30 status checks per minute per IP (for polling)
+  message: 'Too many status check requests, please try again later.',
+});
+

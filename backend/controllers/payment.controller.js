@@ -140,12 +140,12 @@ export const initiateTicketPayment = async (req, res, next) => {
       const ticketIds = tickets.map(t => t.id);
       
       // Create payment record for manual payment
-      const paymentData = {
-        userId,
-        ticketIds,
+    const paymentData = {
+      userId,
+      ticketIds,
         eventId,
         organizerId: eventData.organizerId,
-        amount: totalAmount,
+      amount: totalAmount,
         platformFee: split.platformFee,
         organizerAmount: split.organizerAmount,
         totalAmount,
@@ -154,15 +154,15 @@ export const initiateTicketPayment = async (req, res, next) => {
         billCode: null,
         billURL: null,
         organizerQRCode: eventData.organizerQRCode, // Store QR code from event
-        createdAt: new Date(),
-        processedAt: null
-      };
+      createdAt: new Date(),
+      processedAt: null
+    };
 
-      const paymentRef = await db.collection('payments').add(paymentData);
+    const paymentRef = await db.collection('payments').add(paymentData);
 
       return res.status(201).json({
         message: 'Manual payment initiated',
-        paymentId: paymentRef.id,
+      paymentId: paymentRef.id,
         totalAmount,
         split,
         paymentMethod: 'manual_qr',
@@ -185,6 +185,22 @@ export const initiateTicketPayment = async (req, res, next) => {
 
     const billAmount = Math.round(totalAmount * 100); // Convert to cents
 
+    // Validate required user information for ToyyibPay
+    if (!userData.phoneNumber || userData.phoneNumber.trim() === '') {
+      return res.status(400).json({ 
+        error: 'Phone number is required for payment',
+        hint: 'Please update your profile with a valid phone number before purchasing tickets. You can update it in your Profile settings.'
+      });
+    }
+
+    // Validate email
+    if (!userData.email || userData.email.trim() === '') {
+      return res.status(400).json({ 
+        error: 'Email address is required for payment',
+        hint: 'Please ensure your account has a valid email address.'
+      });
+    }
+
     // Create ToyyibPay bill with split payment
     let billResponse;
     try {
@@ -194,11 +210,11 @@ export const initiateTicketPayment = async (req, res, next) => {
         billDescription: `Purchase of ${quantity} ticket(s) for ${eventData.title}`,
         billPriceSetting: 1, // 1 = fixed price (required for split payment, 0 = dynamic)
         billAmount,
-        billReturnUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success`,
+        billReturnUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?eventId=${eventId}`,
         billCallbackUrl: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/payments/toyyibpay/callback`,
         billTo: userData.name || 'User',
-        billEmail: userData.email || '',
-        billPhone: userData.phoneNumber || '',
+        billEmail: userData.email.trim(),
+        billPhone: userData.phoneNumber.trim(),
         billSplitPayment: '0', // Disabled - all payments go to admin account, split tracked in DB
         billSplitPaymentArgs: '', // Split payment handled manually/separately
         billPaymentChannel: '0', // All payment methods
@@ -220,8 +236,18 @@ export const initiateTicketPayment = async (req, res, next) => {
       });
     }
 
-    if (billResponse && (billResponse.Status === 'Success' || billResponse.status === 'success')) {
-      const { BillCode, BillURL } = billResponse;
+    // Check if bill was created successfully - BillCode presence indicates success
+    if (billResponse && (billResponse.BillCode || billResponse.Status === 'Success' || billResponse.status === 'success')) {
+      const BillCode = billResponse.BillCode;
+      const BillURL = billResponse.BillURL || `https://${process.env.TOYYIBPAY_API_URL?.includes('dev') ? 'dev.' : ''}toyyibpay.com/${BillCode}`;
+      
+      if (!BillCode) {
+        return res.status(500).json({ 
+          error: 'Failed to create payment bill', 
+          reason: 'BillCode missing from response',
+          debug: { response: billResponse }
+        });
+      }
 
       // Only NOW create tickets after successful payment bill creation
       // If payment fails later, tickets will remain pending_payment (handled in callback)
@@ -250,7 +276,7 @@ export const initiateTicketPayment = async (req, res, next) => {
 
       return res.status(201).json({
         message: 'Payment initiated successfully',
-        paymentId: paymentRef.id,
+      paymentId: paymentRef.id,
         totalAmount,
         split,
         billCode: BillCode,
@@ -298,42 +324,82 @@ export const handleToyyibPayCallback = async (req, res, next) => {
     }
 
     const paymentData = paymentDoc.data();
-
+    
+    // If payment is already completed, return success (idempotency)
+    if (paymentData.status === 'completed') {
+      console.log(`Payment ${orderId} already processed, skipping duplicate callback`);
+      return res.json({ 
+        success: true,
+        message: 'Payment already processed' 
+      });
+    }
+    
+    // Validate required payment data
+    if (!paymentData.eventId || !paymentData.ticketIds || !Array.isArray(paymentData.ticketIds)) {
+      console.error(`Invalid payment data for ${orderId}:`, paymentData);
+      return res.status(400).json({ error: 'Invalid payment data' });
+    }
+    
     // Update payment status based on ToyyibPay status
     if (status === '1' || status === 'success') {
-      await db.collection('payments').doc(orderId).update({
+      const incrementTickets = paymentData.ticketIds.length;
+      const totalAmount = Number(paymentData.totalAmount || paymentData.amount || 0);
+
+      // Use a transaction to ensure all updates happen atomically
+      const batch = db.batch();
+
+      // Update payment status
+      const paymentRef = db.collection('payments').doc(orderId);
+      batch.update(paymentRef, {
         status: 'completed',
         processedAt: new Date(),
         transactionId: transaction_id,
-        toyStatus: status
+        toyStatus: status,
+        completedAt: new Date()
       });
 
-      // Update tickets status in batch
+      // Update all tickets to paid status (payment successful, ticket is paid)
       for (const ticketId of paymentData.ticketIds) {
-        await db.collection('tickets').doc(ticketId).update({
-          status: 'confirmed',
-          paymentId: orderId
+        const ticketRef = db.collection('tickets').doc(ticketId);
+        batch.update(ticketRef, {
+          status: 'paid', // Status: paid (payment successful but pending confirmation)
+          paymentId: orderId,
+          paidAt: new Date(),
+          confirmedAt: null // Will be set when ticket is confirmed
         });
       }
 
-      // Atomically update event totals based on this payment
-      const incrementTickets = Array.isArray(paymentData.ticketIds) ? paymentData.ticketIds.length : 1;
+      // Commit batch update for payment and tickets
+      await batch.commit();
+
+      // Atomically update event totals (ticketsSold and revenue)
       const eventRef = db.collection('events').doc(paymentData.eventId);
       await db.runTransaction(async (t) => {
         const snap = await t.get(eventRef);
-        if (!snap.exists) return;
+        if (!snap.exists) {
+          console.error(`Event ${paymentData.eventId} not found for payment ${orderId}`);
+          throw new Error('Event not found');
+        }
         const curr = snap.data() || {};
         const currentSold = Number(curr.ticketsSold || 0);
         const currentRevenue = Number(curr.revenue || 0);
+        
+        console.log(`Updating event ${paymentData.eventId}: ticketsSold ${currentSold} -> ${currentSold + incrementTickets}, revenue ${currentRevenue} -> ${currentRevenue + totalAmount}`);
+        
         t.update(eventRef, {
           ticketsSold: currentSold + incrementTickets,
-          revenue: currentRevenue + Number(paymentData.amount || 0)
+          revenue: currentRevenue + totalAmount,
+          updatedAt: new Date()
         });
       });
 
+      console.log(`Payment ${orderId} processed successfully: ${incrementTickets} tickets confirmed, RM${totalAmount} added to event ${paymentData.eventId}`);
+
       return res.json({ 
         success: true,
-        message: 'Payment processed successfully' 
+        message: 'Payment processed successfully',
+        ticketsConfirmed: incrementTickets,
+        eventId: paymentData.eventId
       });
     } else {
       // Payment failed - keep tickets as pending_payment for retry
@@ -373,8 +439,80 @@ export const getPaymentStatus = async (req, res, next) => {
 
     const paymentData = paymentDoc.data();
 
+    // Prevent caching to ensure fresh status checks during polling
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     res.json({ payment: { id: paymentDoc.id, ...paymentData } });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get user's transaction history
+ */
+export const getMyTransactions = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+
+    // Get all payments made by this user
+    // Sort in memory to avoid composite index requirement
+    const paymentsSnapshot = await db.collection('payments')
+      .where('userId', '==', userId)
+      .get();
+
+    const transactions = [];
+    
+    for (const paymentDoc of paymentsSnapshot.docs) {
+      const paymentData = paymentDoc.data();
+      
+      // Get event details if available
+      let event = null;
+      if (paymentData.eventId) {
+        const eventDoc = await db.collection('events').doc(paymentData.eventId).get();
+        if (eventDoc.exists) {
+          const eventData = eventDoc.data();
+          event = {
+            id: eventDoc.id,
+            title: eventData.title,
+            startDate: eventData.startDate?.toDate ? eventData.startDate.toDate().toISOString() : eventData.startDate
+          };
+        }
+      }
+
+      // Get ticket IDs if available
+      const ticketIds = paymentData.ticketIds || [];
+
+      transactions.push({
+        id: paymentDoc.id,
+        status: paymentData.status,
+        totalAmount: paymentData.totalAmount || paymentData.amount || 0,
+        method: paymentData.method || 'toyyibpay',
+        transactionId: paymentData.transactionId,
+        billcode: paymentData.billcode,
+        createdAt: paymentData.createdAt?.toDate ? paymentData.createdAt.toDate().toISOString() : paymentData.createdAt,
+        completedAt: paymentData.completedAt?.toDate ? paymentData.completedAt.toDate().toISOString() : paymentData.completedAt,
+        processedAt: paymentData.processedAt?.toDate ? paymentData.processedAt.toDate().toISOString() : paymentData.processedAt,
+        event,
+        ticketIds,
+        ticketCount: ticketIds.length
+      });
+    }
+
+    // Sort by createdAt desc in memory
+    transactions.sort((a, b) => {
+      const ta = new Date(a.createdAt || 0).getTime();
+      const tb = new Date(b.createdAt || 0).getTime();
+      return tb - ta;
+    });
+
+    res.json({ transactions, total: transactions.length });
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
     next(error);
   }
 };
@@ -408,7 +546,7 @@ export const getOrganizerFinance = async (req, res, next) => {
       let eventFee = 0;
 
       paymentsSnapshot.forEach(paymentDoc => {
-        const paymentData = paymentDoc.data();
+    const paymentData = paymentDoc.data();
         eventRevenue += paymentData.organizerAmount || 0;
         eventFee += paymentData.platformFee || 0;
       });

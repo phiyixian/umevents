@@ -4,8 +4,6 @@ import { useUserStore } from '../store/userStore';
 import api from '../config/axios';
 import { useQuery, useMutation } from 'react-query';
 import toast from 'react-hot-toast';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import firebaseApp from '../config/firebase';
 
 const ClubProfilePage = () => {
   const { user } = useAuth();
@@ -160,10 +158,15 @@ const ClubProfilePage = () => {
       
       // Upload new logo if one was selected
       if (clubLogoFile) {
-        const storage = getStorage(firebaseApp);
-        const storageRef = ref(storage, `club_logos/${user.uid}_${Date.now()}`);
-        await uploadBytes(storageRef, clubLogoFile);
-        logoUrl = await getDownloadURL(storageRef);
+        const formDataUpload = new FormData();
+        formDataUpload.append('image', clubLogoFile);
+        
+        const uploadResponse = await api.post('/upload/club-logo', formDataUpload);
+        
+        logoUrl = uploadResponse.data.imageUrl;
+        // Update preview with the new URL
+        setClubLogoPreview(logoUrl);
+        setClubLogoFile(null); // Clear file after successful upload
       }
       
       updateProfileMutation.mutate({

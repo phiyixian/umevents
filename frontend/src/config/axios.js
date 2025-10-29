@@ -20,6 +20,11 @@ api.interceptors.request.use(
         const token = await user.getIdToken();
         config.headers.Authorization = `Bearer ${token}`;
       }
+      
+      // If data is FormData, don't set Content-Type (let axios handle it with boundary)
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+      }
     } catch (error) {
       console.error('Error getting auth token:', error);
     }

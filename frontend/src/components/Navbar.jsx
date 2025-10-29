@@ -28,13 +28,21 @@ const Navbar = () => {
             {user ? (
               <>
                 {role === 'student' && (
-                  <Link to="/my-tickets" className="text-gray-700 hover:text-umblue-600 transition">
-                    My Tickets
-                  </Link>
+                  <>
+                    <Link to="/my-tickets" className="text-gray-700 hover:text-umblue-600 transition">
+                      My Tickets
+                    </Link>
+                    <Link to="/transactions" className="text-gray-700 hover:text-umblue-600 transition">
+                      Transactions
+                    </Link>
+                  </>
                 )}
                 
                 {role === 'club' && (
                   <>
+                    <Link to="/transactions" className="text-gray-700 hover:text-umblue-600 transition">
+                      Transactions
+                    </Link>
                     <Link to="/create-event" className="text-gray-700 hover:text-umblue-600 transition">
                       Create Event
                     </Link>
