@@ -4,7 +4,8 @@ import {
   getClubAnalytics,
   getAdminAnalytics,
   getPlatformStats,
-  getTopEvents
+  getTopEvents,
+  getEventParticipants
 } from '../controllers/analytics.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
@@ -15,10 +16,11 @@ const router = express.Router();
 router.use(authenticate);
 
 // Club analytics
-router.get('/club/:clubId', authorize('club', 'admin'), getClubAnalytics);
+router.get('/club/:clubId', getClubAnalytics);
 
 // Event analytics
 router.get('/event/:eventId', authorize('club', 'admin'), getEventAnalytics);
+router.get('/event/:eventId/participants', authorize('club', 'admin'), getEventParticipants);
 
 // Platform analytics (admin only)
 router.get('/platform', authorize('admin'), getPlatformStats);

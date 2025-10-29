@@ -35,6 +35,29 @@ const TicketDetailPage = () => {
     );
   }
 
+  // Safe date formatter (handles Firestore Timestamp/ISO/Date)
+  const formatDate = (dateInput) => {
+    if (!dateInput) return 'Date TBD';
+    try {
+      let date;
+      if (typeof dateInput === 'object' && dateInput?.seconds) {
+        date = new Date(dateInput.seconds * 1000);
+      } else if (dateInput && typeof dateInput.toDate === 'function') {
+        date = dateInput.toDate();
+      } else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+        date = new Date(dateInput);
+      } else if (dateInput instanceof Date) {
+        date = dateInput;
+      } else {
+        return 'Date TBD';
+      }
+      if (!(date instanceof Date) || isNaN(date.getTime())) return 'Date TBD';
+      return format(date, 'PPP p');
+    } catch (e) {
+      return 'Date TBD';
+    }
+  };
+
   const downloadQR = () => {
     const canvas = document.querySelector('#qrcode');
     if (canvas) {
@@ -54,28 +77,28 @@ const TicketDetailPage = () => {
           <div className="grid md:grid-cols-2 gap-8">
             {/* Event Info */}
             <div>
-              <h1 className="text-3xl font-bold mb-4">{event.title}</h1>
+              <h1 className="text-3xl font-bold mb-4">{event?.title || 'Event'}</h1>
               
               <div className="space-y-3 mb-6">
                 <div className="flex items-center text-gray-600">
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  {format(new Date(event.startDate), 'PPP p')}
+                  {formatDate(event?.startDate)}
                 </div>
 
                 <div className="flex items-center text-gray-600">
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   </svg>
-                  {event.location} - {event.venue}
+                  {(event?.location || '') + (event?.venue ? ` - ${event.venue}` : '')}
                 </div>
 
                 <div className="flex items-center text-gray-600">
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
-                  RM {ticket.price.toFixed(2)}
+                  RM {Number(ticket?.price || 0).toFixed(2)}
                 </div>
               </div>
 

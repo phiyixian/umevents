@@ -1,9 +1,25 @@
 import { db, auth } from '../config/firebase.js';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+
+export const selectRole = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    
+    res.json({ 
+      message: 'Login successful',
+      note: 'Login handled by Firebase Auth on frontend'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const registerUser = async (req, res, next) => {
   try {
-    const { email, password, name, role = 'student', studentId, faculty, phoneNumber } = req.body;
+    const { email, password, name, role = 'student', studentId, faculty, phoneNumber, clubName, clubDescription, verificationStatus, logoUrl } = req.body;
+
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'Email, password, and name are required' });
+    }
 
     // Validate UM email (only for email/password registration, not Google)
     // Allow any email for Google sign-ins
@@ -13,29 +29,57 @@ export const registerUser = async (req, res, next) => {
     }
 
     // Create Firebase user
-    const userCredential = await auth.createUser({
-      email,
-      password,
-      displayName: name,
-      emailVerified: false
-    });
+    let userCredential;
+    try {
+      userCredential = await auth.createUser({
+        email,
+        password,
+        displayName: name,
+        emailVerified: false
+      });
+    } catch (firebaseError) {
+      console.error('Firebase user creation error:', firebaseError);
+      if (firebaseError.code === 'auth/email-already-exists') {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+      throw firebaseError;
+    }
 
     // Create user document in Firestore
     const userData = {
       uid: userCredential.uid,
       email,
       name,
-      role: role === 'club' ? 'student' : role, // Default to student, request club separately
-      studentId,
-      faculty,
+      role,
       phoneNumber,
       createdAt: new Date(),
-      updatedAt: new Date(),
-      isClubVerified: role === 'club' ? false : undefined,
-      clubName: role === 'club' ? req.body.clubName : undefined
+      updatedAt: new Date()
     };
 
-    await db.collection('users').doc(userCredential.uid).set(userData);
+    // Add role-specific fields
+    if (role === 'student') {
+      if (studentId) userData.studentId = studentId;
+      if (faculty) userData.faculty = faculty;
+    } else if (role === 'club') {
+      if (clubName) userData.clubName = clubName;
+      if (clubDescription) userData.clubDescription = clubDescription;
+      if (logoUrl) userData.logoUrl = logoUrl;
+      userData.verificationStatus = verificationStatus || 'pending';
+      userData.isClubVerified = false;
+    }
+
+    try {
+      await db.collection('users').doc(userCredential.uid).set(userData);
+    } catch (firestoreError) {
+      console.error('Firestore error:', firestoreError);
+      // If Firestore save fails, try to delete the Firebase user to maintain consistency
+      try {
+        await auth.deleteUser(userCredential.uid);
+      } catch (deleteError) {
+        console.error('Failed to cleanup Firebase user:', deleteError);
+      }
+      throw firestoreError;
+    }
 
     res.status(201).json({ 
       message: 'User registered successfully',
@@ -47,7 +91,11 @@ export const registerUser = async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Registration error:', error);
+    const errorMessage = error.message || 'Registration failed';
+    return res.status(error.status || 500).json({ 
+      error: typeof errorMessage === 'string' ? errorMessage : 'Registration failed' 
+    });
   }
 };
 
@@ -81,17 +129,87 @@ export const getUserProfile = async (req, res, next) => {
   }
 };
 
+export const getPublicClubInfo = async (req, res, next) => {
+  try {
+    const { clubId } = req.params;
+    const docRef = await db.collection('users').doc(clubId).get();
+    if (docRef.exists) {
+      const data = docRef.data();
+      const publicClub = {
+        id: docRef.id,
+        clubName: data.clubName || data.name || 'Club',
+        clubDescription: data.clubDescription || '',
+        email: data.email || '',
+        phoneNumber: data.phoneNumber || '',
+        logoUrl: data.logoUrl || ''
+      };
+      return res.json({ club: publicClub });
+    }
+
+    // Fallback: if the id refers to a club verification request, expose basic info
+    const reqDoc = await db.collection('clubVerificationRequests').doc(clubId).get();
+    if (reqDoc.exists) {
+      const r = reqDoc.data();
+      const publicClub = {
+        id: r.userId || clubId,
+        clubName: r.clubName || 'Club',
+        clubDescription: r.clubDescription || '',
+        email: r.clubEmail || '',
+        phoneNumber: '',
+        logoUrl: r.clubLogo || ''
+      };
+      return res.json({ club: publicClub });
+    }
+
+    return res.status(404).json({ error: 'Club not found' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllPublicClubs = async (req, res, next) => {
+  try {
+    const snapshot = await db.collection('users')
+      .where('role', '==', 'club')
+      .get();
+
+    const clubs = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        clubName: data.clubName || data.name || 'Club',
+        clubDescription: data.clubDescription || '',
+        email: data.email || '',
+        phoneNumber: data.phoneNumber || '',
+        logoUrl: data.logoUrl || ''
+      };
+    });
+
+    res.json({ clubs });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateUserProfile = async (req, res, next) => {
   try {
-    const { name, faculty, phoneNumber, bio } = req.body;
+    const { name, faculty, phoneNumber, bio, clubName, clubDescription, contactPerson, logoUrl } = req.body;
     
     const updates = {
-      ...(name && { name }),
-      ...(faculty && { faculty }),
-      ...(phoneNumber && { phoneNumber }),
-      ...(bio && { bio }),
       updatedAt: new Date()
     };
+
+    // Student fields
+    if (name) updates.name = name;
+    if (faculty) updates.faculty = faculty;
+    if (phoneNumber) updates.phoneNumber = phoneNumber;
+    if (bio) updates.bio = bio;
+
+    // Club fields
+    if (clubName) updates.clubName = clubName;
+    if (clubDescription) updates.clubDescription = clubDescription;
+    if (contactPerson) updates.name = contactPerson;
+    if (logoUrl) updates.logoUrl = logoUrl;
 
     await db.collection('users').doc(req.user.uid).update(updates);
 
@@ -134,6 +252,128 @@ export const requestClubVerification = async (req, res, next) => {
     res.status(201).json({ 
       message: 'Club verification request submitted successfully' 
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listClubVerificationRequests = async (req, res, next) => {
+  try {
+    // 1) Load explicit club verification requests (legacy/new flow)
+    const requestsSnap = await db.collection('clubVerificationRequests').get();
+    const explicitRequests = requestsSnap.docs.map(doc => ({ id: doc.id, type: 'club_verification', ...doc.data() }));
+
+    // 2) Load clubs with pending verification (no explicit request doc)
+    const usersPendingSnap = await db.collection('users')
+      .where('role', '==', 'club')
+      .where('verificationStatus', '==', 'pending')
+      .get();
+
+    const synthesizedClubRequests = usersPendingSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id, // userId used as request id (handled by approve fallback)
+        type: 'club_verification',
+        userId: doc.id,
+        clubId: doc.id,
+        clubName: data.clubName || data.name || 'Club',
+        clubDescription: data.clubDescription || '',
+        clubEmail: data.email || '',
+        clubLogo: data.logoUrl || '',
+        status: 'pending',
+        submittedAt: data.createdAt || new Date(),
+      };
+    });
+
+    // 3) Load ToyyibPay application pending
+    const toyyibPendingSnap = await db.collection('users')
+      .where('role', '==', 'club')
+      .where('toyyibpayApplicationStatus', '==', 'pending')
+      .get();
+
+    const toyyibpayRequests = toyyibPendingSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id, // userId
+        type: 'toyyibpay',
+        userId: doc.id,
+        clubId: doc.id,
+        clubName: data.clubName || data.name || 'Club',
+        clubDescription: data.clubDescription || '',
+        clubEmail: data.email || '',
+        clubLogo: data.logoUrl || '',
+        status: 'pending',
+        submittedAt: data.updatedAt || data.createdAt || new Date(),
+      };
+    });
+
+    // Merge and return
+    const requests = [...explicitRequests, ...synthesizedClubRequests, ...toyyibpayRequests];
+    res.json({ requests });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const approveClubVerificationRequest = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const requestRef = db.collection('clubVerificationRequests').doc(requestId);
+    const requestDoc = await requestRef.get();
+
+    let userIdToApprove = null;
+    if (requestDoc.exists) {
+      const data = requestDoc.data();
+      userIdToApprove = data.userId;
+      await requestRef.update({
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: req.user.uid
+      });
+    } else {
+      // Fallback: requestId is actually the userId (synthesized list entry)
+      userIdToApprove = requestId;
+    }
+
+    await db.collection('users').doc(userIdToApprove).update({
+      verificationStatus: 'approved',
+      isClubVerified: true,
+      updatedAt: new Date()
+    });
+
+    res.json({ message: 'Club verification approved' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const rejectClubVerificationRequest = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const requestRef = db.collection('clubVerificationRequests').doc(requestId);
+    const requestDoc = await requestRef.get();
+
+    let userIdToReject = null;
+    if (requestDoc.exists) {
+      const data = requestDoc.data();
+      userIdToReject = data.userId;
+      await requestRef.update({
+        status: 'rejected',
+        reviewedAt: new Date(),
+        reviewedBy: req.user.uid
+      });
+    } else {
+      // Fallback: requestId is actually the userId
+      userIdToReject = requestId;
+    }
+
+    await db.collection('users').doc(userIdToReject).update({
+      verificationStatus: 'rejected',
+      isClubVerified: false,
+      updatedAt: new Date()
+    });
+
+    res.json({ message: 'Club verification rejected' });
   } catch (error) {
     next(error);
   }

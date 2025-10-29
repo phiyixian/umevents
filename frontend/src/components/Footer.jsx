@@ -14,17 +14,17 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-gray-400">
               <li>
-                <a href="#about" className="hover:text-white transition">
+                <a href="/about" className="hover:text-white transition">
                   About Us
                 </a>
               </li>
               <li>
-                <a href="#contact" className="hover:text-white transition">
+                <a href="/contact" className="hover:text-white transition">
                   Contact
                 </a>
               </li>
               <li>
-                <a href="#faq" className="hover:text-white transition">
+                <a href="/faq" className="hover:text-white transition">
                   FAQ
                 </a>
               </li>
@@ -35,13 +35,13 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Connect</h4>
             <ul className="space-y-2 text-gray-400">
               <li>Email: support@umevents.com</li>
-              <li>Phone: +60 X-XXXX XXXX</li>
+              <li>Phone: +6012-478 5614</li>
             </ul>
           </div>
         </div>
         
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; 2024 UMEvents. All rights reserved.</p>
+          <p>&copy; 2025 UMEvents. All rights reserved.</p>
         </div>
       </div>
     </footer>

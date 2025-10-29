@@ -81,25 +81,56 @@ export const getMyTickets = async (req, res, next) => {
   try {
     const userId = req.user.uid;
 
+    // Avoid composite index requirement by removing orderBy and sorting in memory
     const snapshot = await db.collection('tickets')
       .where('userId', '==', userId)
-      .orderBy('purchaseDate', 'desc')
       .get();
 
     const tickets = [];
     
     for (const doc of snapshot.docs) {
       const ticketData = doc.data();
-      const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
-      tickets.push({
+      
+      // Get event details
+      let event = null;
+      if (ticketData.eventId) {
+        const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
+        if (eventDoc.exists) {
+          const eventData = eventDoc.data();
+          event = {
+            id: eventDoc.id,
+            ...eventData,
+            // Convert Firestore timestamps to ISO strings for serialization
+            startDate: eventData.startDate?.toDate ? eventData.startDate.toDate().toISOString() : eventData.startDate,
+            endDate: eventData.endDate?.toDate ? eventData.endDate.toDate().toISOString() : eventData.endDate,
+            createdAt: eventData.createdAt?.toDate ? eventData.createdAt.toDate().toISOString() : eventData.createdAt,
+            updatedAt: eventData.updatedAt?.toDate ? eventData.updatedAt.toDate().toISOString() : eventData.updatedAt
+          };
+        }
+      }
+      
+      // Convert ticket dates as well
+      const ticket = {
         id: doc.id,
         ...ticketData,
-        event: eventDoc.exists ? { id: eventDoc.id, ...eventDoc.data() } : null
-      });
+        purchaseDate: ticketData.purchaseDate?.toDate ? ticketData.purchaseDate.toDate().toISOString() : ticketData.purchaseDate,
+        checkedInAt: ticketData.checkedInAt?.toDate ? ticketData.checkedInAt.toDate().toISOString() : ticketData.checkedInAt,
+        event
+      };
+      
+      tickets.push(ticket);
     }
+
+    // Sort by purchaseDate desc in memory
+    tickets.sort((a, b) => {
+      const ta = new Date(a.purchaseDate || 0).getTime();
+      const tb = new Date(b.purchaseDate || 0).getTime();
+      return tb - ta;
+    });
 
     res.json({ tickets, total: tickets.length });
   } catch (error) {
+    console.error('Error in getMyTickets:', error);
     next(error);
   }
 };

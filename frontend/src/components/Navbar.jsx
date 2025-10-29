@@ -11,38 +11,51 @@ const Navbar = () => {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-umblue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl">U</span>
             </div>
             <span className="text-xl font-bold text-gray-900">UMEvents</span>
           </Link>
 
           <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="text-gray-700 hover:text-primary-600 transition">
+            <Link to="/" className="text-gray-700 hover:text-umblue-600 transition">
               Home
             </Link>
-            <Link to="/events" className="text-gray-700 hover:text-primary-600 transition">
+            <Link to="/events" className="text-gray-700 hover:text-umblue-600 transition">
               Events
             </Link>
             
             {user ? (
               <>
-                <Link to="/my-tickets" className="text-gray-700 hover:text-primary-600 transition">
-                  My Tickets
-                </Link>
+                {role === 'student' && (
+                  <Link to="/my-tickets" className="text-gray-700 hover:text-umblue-600 transition">
+                    My Tickets
+                  </Link>
+                )}
                 
-                {(role === 'club' || role === 'admin') && (
+                {role === 'club' && (
                   <>
-                    <Link to="/create-event" className="text-gray-700 hover:text-primary-600 transition">
+                    <Link to="/create-event" className="text-gray-700 hover:text-umblue-600 transition">
                       Create Event
                     </Link>
-                    <Link to="/analytics" className="text-gray-700 hover:text-primary-600 transition">
+                    <Link to="/analytics" className="text-gray-700 hover:text-umblue-600 transition">
                       Analytics
                     </Link>
                   </>
                 )}
+
+                {role === 'admin' && (
+                  <>
+                    <Link to="/admin/verifications" className="text-gray-700 hover:text-umblue-600 transition">
+                      Verify Clubs
+                    </Link>
+                    <Link to="/admin/analytics" className="text-gray-700 hover:text-umblue-600 transition">
+                      Platform Analytics
+                    </Link>
+                  </>
+                )}
                 
-                <Link to="/profile" className="text-gray-700 hover:text-primary-600 transition">
+                <Link to="/profile" className="text-gray-700 hover:text-umblue-600 transition">
                   {name || 'Profile'}
                 </Link>
                 
@@ -55,10 +68,10 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <Link to="/login" className="text-gray-700 hover:text-primary-600 transition">
+                <Link to="/login" className="text-gray-700 hover:text-umblue-600 transition">
                   Login
                 </Link>
-                <Link to="/register" className="btn btn-primary">
+                <Link to="/start" className="btn btn-primary">
                   Sign Up
                 </Link>
               </>

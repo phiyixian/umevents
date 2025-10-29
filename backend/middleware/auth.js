@@ -1,4 +1,4 @@
-import { auth } from '../config/firebase.js';
+import { auth, db } from '../config/firebase.js';
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -24,14 +24,22 @@ export const authorize = (...roles) => {
         return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      const userDoc = await req.db.collection('users').doc(req.user.uid).get();
-      const userData = userDoc.data();
+      const userDoc = await db.collection('users').doc(req.user.uid).get();
+      const userData = userDoc.data() || {};
 
-      if (!roles.includes(userData.role)) {
+      // Allow admin by email override via env
+      const adminEmails = (process.env.ADMIN_EMAILS || '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean);
+      const isEmailAdmin = req.user.email && adminEmails.includes(req.user.email.toLowerCase());
+      const effectiveRole = isEmailAdmin ? 'admin' : userData.role;
+
+      if (!roles.includes(effectiveRole)) {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
 
-      req.user.role = userData.role;
+      req.user.role = effectiveRole;
       next();
     } catch (error) {
       console.error('Authorization error:', error);

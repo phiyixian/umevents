@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../config/axios';
 import toast from 'react-hot-toast';
 
-const RegisterPage = () => {
+const UserRegisterPage = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -37,27 +37,23 @@ const RegisterPage = () => {
     setLoading(true);
 
     try {
-      // Register with Firebase
-      const userCredential = await register(
-        formData.email,
-        formData.password,
-        formData
-      );
-
-      // Save additional user data to backend
+      // Register with Firebase and backend in one call
       await api.post('/auth/register', {
         email: formData.email,
         password: formData.password,
         name: formData.name,
-        role: formData.role,
+        role: 'student',
         studentId: formData.studentId,
         faculty: formData.faculty,
         phoneNumber: formData.phoneNumber
       });
 
-      navigate('/dashboard');
+      toast.success('Account created successfully!');
+      navigate('/events');
     } catch (error) {
       console.error('Registration error:', error);
+      const errorMsg = error.response?.data?.error || 'Registration failed';
+      toast.error(typeof errorMsg === 'string' ? errorMsg : 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -66,9 +62,10 @@ const RegisterPage = () => {
   const handleGoogleSignUp = async () => {
     try {
       await signInWithGoogle();
-      navigate('/dashboard');
+      navigate('/events');
     } catch (error) {
       console.error('Google sign-up error:', error);
+      toast.error('Google sign-up failed');
     }
   };
 
@@ -77,7 +74,7 @@ const RegisterPage = () => {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
+            Student Registration
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Already have an account?{' '}
@@ -239,4 +236,4 @@ const RegisterPage = () => {
   );
 };
 
-export default RegisterPage;
+export default UserRegisterPage;

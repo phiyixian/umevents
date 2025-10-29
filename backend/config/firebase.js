@@ -2,6 +2,10 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import dotenv from 'dotenv';
+
+// Ensure environment variables are loaded even if this module is imported before server bootstrap
+dotenv.config();
 
 const serviceAccount = {
   type: "service_account",
@@ -22,6 +26,11 @@ let auth;
 let storage;
 
 try {
+  // Validate required environment variables
+  if (!process.env.FIREBASE_PROJECT_ID) {
+    throw new Error('FIREBASE_PROJECT_ID is required but not found in environment variables');
+  }
+
   if (!getApps().length) {
     app = initializeApp({
       credential: cert(serviceAccount),
@@ -36,8 +45,14 @@ try {
   storage = getStorage();
 
   console.log('✅ Firebase Admin initialized successfully');
+  console.log(`📦 Project ID: ${process.env.FIREBASE_PROJECT_ID}`);
+  console.log(`🗄️  Database: ${db ? 'Connected' : 'Not connected'}`);
 } catch (error) {
   console.error('❌ Firebase Admin initialization error:', error);
+  console.error('Make sure you have:');
+  console.error('1. Created a Firebase project in Firebase Console');
+  console.error('2. Created a Firestore database (Production mode)');
+  console.error('3. Set up all required environment variables in backend/.env');
   throw error;
 }
 

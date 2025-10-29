@@ -6,7 +6,8 @@ import {
   updateEvent,
   deleteEvent,
   getMyEvents,
-  searchEvents
+  searchEvents,
+  getEventsByOrganizerPublic
 } from '../controllers/event.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
@@ -17,6 +18,7 @@ const router = express.Router();
 router.get('/', getAllEvents);
 router.get('/search', searchEvents);
 router.get('/:id', getEventById);
+router.get('/by-organizer/:clubId', getEventsByOrganizerPublic);
 
 // Protected routes - students can create events for their clubs
 router.post('/', authenticate, createEvent);

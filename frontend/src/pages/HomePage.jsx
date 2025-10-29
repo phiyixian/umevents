@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from 'react-query';
 import api from '../config/axios';
+import { useAuth } from '../contexts/AuthContext';
+import { useUserStore } from '../store/userStore';
 
 const HomePage = () => {
+  const { user } = useAuth();
+  const { role, verificationStatus } = useUserStore();
   const { data: eventsData } = useQuery('featuredEvents', async () => {
     const response = await api.get('/events?limit=6');
     return response.data;
@@ -12,76 +16,53 @@ const HomePage = () => {
 
   return (
     <div>
+      {/* Verification Banner for Clubs */}
+      {user && role === 'club' && verificationStatus === 'pending' && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center">
+              <svg className="w-6 h-6 text-yellow-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <h3 className="text-yellow-800 font-semibold">Account Verification Pending</h3>
+                <p className="text-yellow-700 text-sm">Your club account is awaiting admin verification. Once approved, you'll be able to create and manage events.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
-      <section className="bg-gradient-to-r from-primary-600 to-primary-800 text-white py-20">
+      <section className="bg-gradient-to-r from-umblue-600 to-umblue-800 text-white py-20">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 heading">
             Welcome to UMEvents
           </h1>
-          <p className="text-xl mb-8 text-primary-100">
+          <p className="text-xl mb-8 text-white/90">
             Discover, join, and create amazing events at Universiti Malaya
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/events" className="btn bg-white text-primary-600 hover:bg-gray-100">
+            <Link to="/events" className="btn bg-white text-umblue-600 hover:bg-gray-100">
               Browse Events
             </Link>
-            <Link to="/register" className="btn bg-primary-700 hover:bg-primary-900 border border-white">
-              Get Started
-            </Link>
+            {!user && (
+              <Link to="/start" className="btn bg-umblue-700 hover:bg-umblue-900 border border-white">
+                Get Started
+              </Link>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-16 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12">Why Choose UMEvents?</h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="card text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Easy Event Creation</h3>
-              <p className="text-gray-600">
-                Create and manage your events with just a few clicks
-              </p>
-            </div>
-            
-            <div className="card text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Secure Payments</h3>
-              <p className="text-gray-600">
-                Pay seamlessly with DuitNow FPX / QR integration
-              </p>
-            </div>
-            
-            <div className="card text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Real-time Analytics</h3>
-              <p className="text-gray-600">
-                Track your event performance with detailed insights
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Why Choose moved to About page */}
 
       {/* Featured Events */}
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold">Featured Events</h2>
-            <Link to="/events" className="text-primary-600 hover:text-primary-700 font-semibold">
+            <h2 className="text-3xl font-bold font-heading">Featured Events</h2>
+            <Link to="/events" className="text-umblue-600 hover:text-umblue-700 font-semibold">
               View All →
             </Link>
           </div>
@@ -111,7 +92,7 @@ const HomePage = () => {
                   <p className="text-gray-600 text-sm mb-2 line-clamp-2">{event.description}</p>
                   <div className="flex items-center justify-between text-sm text-gray-500">
                     <span>{event.category}</span>
-                    <span className="font-semibold text-primary-600">
+                    <span className="font-semibold text-umblue-600">
                       RM {event.ticketPrice.toFixed(2)}
                     </span>
                   </div>

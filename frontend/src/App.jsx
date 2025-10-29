@@ -12,25 +12,37 @@ import HomePage from './pages/HomePage';
 import EventsPage from './pages/EventsPage';
 import EventDetailPage from './pages/EventDetailPage';
 import CreateEventPage from './pages/CreateEventPage';
+import EditEventPage from './pages/EditEventPage';
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import UserRegisterPage from './pages/UserRegisterPage';
+import ClubRegisterPage from './pages/ClubRegisterPage';
+import RoleSelectPage from './pages/RoleSelectPage';
+import AdminVerificationPage from './pages/AdminVerificationPage';
+import PaymentStatusPage from './pages/PaymentStatusPage';
 import DashboardPage from './pages/DashboardPage';
 import MyTicketsPage from './pages/MyTicketsPage';
 import TicketDetailPage from './pages/TicketDetailPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import AdminAnalyticsPage from './pages/AdminAnalyticsPage';
+import AboutPage from './pages/AboutPage';
+import ContactPage from './pages/ContactPage';
+import FAQPage from './pages/FAQPage';
+import ClubIntroPage from './pages/ClubIntroPage';
 import ProfilePage from './pages/ProfilePage';
+import StudentProfilePage from './pages/StudentProfilePage';
+import ClubProfilePage from './pages/ClubProfilePage';
 
 // Create a client
 const queryClient = new QueryClient();
 
 // Protected Route Component
-const ProtectedRoute = ({ children, requiredRole }) => {
+const ProtectedRoute = ({ children, requiredRole, excludeRole }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-umblue-600"></div>
       </div>
     );
   }
@@ -39,11 +51,30 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && useUserStore.getState().role !== requiredRole) {
+  const userRole = useUserStore.getState().role;
+
+  // Check if route requires specific role
+  if (requiredRole && userRole !== requiredRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  // Check if route excludes specific role
+  if (excludeRole && userRole === excludeRole) {
     return <Navigate to="/" replace />;
   }
 
   return children;
+};
+
+// Profile Page Wrapper - Shows different profile based on role
+const ProfilePageWrapper = () => {
+  const { role } = useUserStore();
+  
+  if (role === 'club') {
+    return <ClubProfilePage />;
+  } else {
+    return <StudentProfilePage />;
+  }
 };
 
 function AppRoutes() {
@@ -51,19 +82,26 @@ function AppRoutes() {
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/start" element={<RoleSelectPage />} />
+      <Route path="/student-register" element={<UserRegisterPage />} />
+      <Route path="/club-register" element={<ClubRegisterPage />} />
+      <Route path="/payment/status/:paymentId" element={<PaymentStatusPage />} />
       
       {/* Main Routes with Layout */}
       <Route path="/" element={<MainLayout />}>
         <Route index element={<HomePage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:id" element={<EventDetailPage />} />
+        <Route path="about" element={<AboutPage />} />
+        <Route path="contact" element={<ContactPage />} />
+        <Route path="faq" element={<FAQPage />} />
+        <Route path="clubs/:clubId" element={<ClubIntroPage />} />
         
         {/* Protected Student Routes */}
         <Route 
           path="dashboard" 
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="student">
               <DashboardPage />
             </ProtectedRoute>
           } 
@@ -71,7 +109,7 @@ function AppRoutes() {
         <Route 
           path="my-tickets" 
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="student">
               <MyTicketsPage />
             </ProtectedRoute>
           } 
@@ -79,7 +117,7 @@ function AppRoutes() {
         <Route 
           path="tickets/:id" 
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="student">
               <TicketDetailPage />
             </ProtectedRoute>
           } 
@@ -88,7 +126,7 @@ function AppRoutes() {
           path="profile" 
           element={
             <ProtectedRoute>
-              <ProfilePage />
+              <ProfilePageWrapper />
             </ProtectedRoute>
           } 
         />
@@ -103,10 +141,36 @@ function AppRoutes() {
           } 
         />
         <Route 
+          path="edit-event/:id" 
+          element={
+            <ProtectedRoute requiredRole="club">
+              <EditEventPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
           path="analytics" 
           element={
             <ProtectedRoute requiredRole="club">
               <AnalyticsPage />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Protected Admin Routes */}
+        <Route 
+          path="admin/verifications" 
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminVerificationPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="admin/analytics" 
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminAnalyticsPage />
             </ProtectedRoute>
           } 
         />

@@ -78,17 +78,36 @@ export const getEventAnalytics = async (req, res, next) => {
 export const getClubAnalytics = async (req, res, next) => {
   try {
     const { clubId } = req.params;
+    
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     const userId = req.user.uid;
+
+    // Verify the club is requesting their own analytics
+    if (clubId !== userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
 
     // Get club events
     const eventsSnapshot = await db.collection('events')
       .where('organizerId', '==', clubId)
       .get();
 
-    const events = eventsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const events = eventsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        title: data.title,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        capacity: data.capacity,
+        ticketsSold: data.ticketsSold || 0,
+        ticketPrice: data.ticketPrice || 0,
+        revenue: data.revenue || 0
+      };
+    });
 
     // Calculate club-wide analytics
     let totalEvents = events.length;
@@ -102,22 +121,19 @@ export const getClubAnalytics = async (req, res, next) => {
       totalRevenueAfterFees += (event.revenue || 0) - ((event.ticketsSold || 0) * 1.00);
     }
 
-    const recentEvents = events
-      .filter(e => new Date(e.startDate) <= new Date())
-      .slice(0, 10);
-
     res.json({
       clubId,
+      events,
       analytics: {
         totalEvents,
         totalTicketsSold,
         totalRevenue,
         totalRevenueAfterFees,
-        averageTicketsPerEvent: totalEvents > 0 ? (totalTicketsSold / totalEvents).toFixed(2) : 0,
-        recentEvents
+        averageTicketsPerEvent: totalEvents > 0 ? (totalTicketsSold / totalEvents).toFixed(2) : 0
       }
     });
   } catch (error) {
+    console.error('Error in getClubAnalytics:', error);
     next(error);
   }
 };
@@ -271,6 +287,60 @@ export const getTopEvents = async (req, res, next) => {
 
     res.json({ events });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const getEventParticipants = async (req, res, next) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user.uid;
+
+    // Get event to verify ownership
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    if (!eventDoc.exists) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const eventData = eventDoc.data();
+    
+    // Check authorization
+    if (eventData.organizerId !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    // Get all tickets for this event
+    const ticketsSnapshot = await db.collection('tickets')
+      .where('eventId', '==', eventId)
+      .get();
+
+    // Get user details for each ticket
+    const participants = [];
+    for (const ticketDoc of ticketsSnapshot.docs) {
+      const ticketData = ticketDoc.data();
+      const userDoc = await db.collection('users').doc(ticketData.userId).get();
+      const userData = userDoc.data();
+
+      participants.push({
+        ticketId: ticketDoc.id,
+        purchaseDate: ticketData.purchaseDate,
+        status: ticketData.status,
+        studentName: userData.name || 'Unknown',
+        studentId: userData.studentId || 'N/A',
+        faculty: userData.faculty || 'N/A',
+        email: userData.email || 'N/A',
+        phoneNumber: userData.phoneNumber || 'N/A'
+      });
+    }
+
+    res.json({
+      eventId,
+      eventTitle: eventData.title,
+      participants,
+      totalParticipants: participants.length
+    });
+  } catch (error) {
+    console.error('Error in getEventParticipants:', error);
     next(error);
   }
 };

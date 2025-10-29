@@ -90,7 +90,8 @@ export const AuthProvider = ({ children }) => {
       await signInWithEmailAndPassword(auth, email, password);
       toast.success('Logged in successfully!');
     } catch (error) {
-      toast.error(error.message);
+      const errorMessage = error.message || 'Login failed';
+      toast.error(typeof errorMessage === 'string' ? errorMessage : 'Login failed');
       throw error;
     }
   };
@@ -101,13 +102,18 @@ export const AuthProvider = ({ children }) => {
       toast.success('Account created successfully!');
       return userCredential;
     } catch (error) {
-      toast.error(error.message);
+      const errorMessage = error.message || 'Registration failed';
+      toast.error(typeof errorMessage === 'string' ? errorMessage : 'Registration failed');
       throw error;
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (selectedRole) => {
     try {
+      if (!selectedRole) {
+        throw new Error('Please select your role first');
+      }
+      
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -123,8 +129,9 @@ export const AuthProvider = ({ children }) => {
           email: user.email,
           name: user.displayName || 'User',
           photoURL: user.photoURL,
-          role: 'student',
+          role: selectedRole,
           provider: 'google',
+          ...(selectedRole === 'club' && { verificationStatus: 'pending' }),
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -140,7 +147,8 @@ export const AuthProvider = ({ children }) => {
       toast.success('Logged in with Google!');
     } catch (error) {
       console.error('Google sign-in error:', error);
-      toast.error(error.message || 'Failed to sign in with Google');
+      const errorMessage = error.message || 'Failed to sign in with Google';
+      toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to sign in with Google');
       throw error;
     }
   };
@@ -150,7 +158,8 @@ export const AuthProvider = ({ children }) => {
       await firebaseSignOut(auth);
       toast.success('Logged out successfully!');
     } catch (error) {
-      toast.error(error.message);
+      const errorMessage = error.message || 'Logout failed';
+      toast.error(typeof errorMessage === 'string' ? errorMessage : 'Logout failed');
       throw error;
     }
   };

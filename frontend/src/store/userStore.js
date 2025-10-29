@@ -9,6 +9,7 @@ export const useUserStore = create((set) => ({
   faculty: null,
   phoneNumber: null,
   isClubVerified: false,
+  verificationStatus: null, // 'pending', 'approved', 'rejected'
   
   setUserStore: (userData) => set((state) => ({
     ...state,
@@ -23,7 +24,8 @@ export const useUserStore = create((set) => ({
     studentId: null,
     faculty: null,
     phoneNumber: null,
-    isClubVerified: false
+    isClubVerified: false,
+    verificationStatus: null
   })
 }));
 

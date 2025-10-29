@@ -16,6 +16,49 @@ const ProfilePage = () => {
     phoneNumber: phoneNumber || ''
   });
 
+  const [paymentSettings, setPaymentSettings] = useState({
+    categoryCode: '',
+    toyyibpayEnabled: false,
+    paymentMethod: 'toyyibpay',
+    qrCodeImageUrl: ''
+  });
+
+  const { data: paymentData } = useQuery(
+    ['paymentSettings'],
+    async () => {
+      const response = await api.get('/auth/profile');
+      return response.data;
+    },
+    {
+      onSuccess: (data) => {
+        if (data.user?.categoryCode) {
+          setPaymentSettings({
+            categoryCode: data.user.categoryCode || '',
+            toyyibpayEnabled: data.user.toyyibpayEnabled || false,
+            paymentMethod: data.user.paymentMethod || 'toyyibpay',
+            qrCodeImageUrl: data.user.qrCodeImageUrl || ''
+          });
+        }
+      }
+    }
+  );
+
+  const updatePaymentMutation = useMutation(
+    async (data) => {
+      const response = await api.put('/payments/settings', data);
+      return response.data;
+    },
+    {
+      onSuccess: () => {
+        toast.success('Payment settings updated successfully!');
+      },
+      onError: (error) => {
+        const errorMsg = error.response?.data?.error || 'Failed to update payment settings';
+        toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update payment settings');
+      }
+    }
+  );
+
   const { data: profileData } = useQuery('profile', async () => {
     const response = await api.get('/auth/profile');
     return response.data;
@@ -31,7 +74,8 @@ const ProfilePage = () => {
         toast.success('Profile updated successfully!');
       },
       onError: (error) => {
-        toast.error(error.response?.data?.error || 'Failed to update profile');
+        const errorMsg = error.response?.data?.error || 'Failed to update profile';
+        toast.error(typeof errorMsg === 'string' ? errorMsg : 'Failed to update profile');
       }
     }
   );

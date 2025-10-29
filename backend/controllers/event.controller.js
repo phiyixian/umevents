@@ -11,7 +11,9 @@ export const createEvent = async (req, res, next) => {
       return res.status(403).json({ error: 'Only clubs can create events' });
     }
 
-    if (userData.role === 'club' && !userData.isClubVerified) {
+    // Check if club is verified
+    const isClubVerified = userData.isClubVerified || userData.verificationStatus === 'approved';
+    if (userData.role === 'club' && !isClubVerified) {
       return res.status(403).json({ error: 'Club not verified yet' });
     }
 
@@ -26,7 +28,12 @@ export const createEvent = async (req, res, next) => {
       ticketPrice,
       capacity,
       imageUrl,
-      tags
+      imageUrls, // Array of image URLs
+      tags,
+      socialMediaPostUrl, // Social media embed URL
+      paymentMethod = 'toyyibpay', // toyyibpay or manual_qr
+      organizerQRCode = '', // For manual QR payment
+      paymentInstructions = '' // Instructions for manual payment
     } = req.body;
 
     const eventData = {
@@ -39,11 +46,14 @@ export const createEvent = async (req, res, next) => {
       venue,
       ticketPrice: parseFloat(ticketPrice),
       capacity: parseInt(capacity),
-      imageUrl,
+      imageUrl: imageUrl || (imageUrls && imageUrls.length > 0 ? imageUrls[0] : ''), // Primary image
+      imageUrls: imageUrls || [], // Array of all images
       tags: tags || [],
+      socialMediaPostUrl: socialMediaPostUrl || '',
       organizerId: userId,
       organizerName: userData.name || userData.clubName,
       organizerEmail: userData.email,
+      organizerLogoUrl: userData.logoUrl || '',
       ticketsSold: 0,
       revenue: 0,
       status: 'published', // published, draft, cancelled, completed
@@ -53,7 +63,10 @@ export const createEvent = async (req, res, next) => {
       ratings: {
         average: 0,
         count: 0
-      }
+      },
+      paymentMethod,
+      organizerQRCode,
+      paymentInstructions
     };
 
     const eventRef = await db.collection('events').add(eventData);
@@ -136,14 +149,49 @@ export const updateEvent = async (req, res, next) => {
       return res.status(403).json({ error: 'Not authorized to update this event' });
     }
 
-    const updates = {
-      ...req.body,
-      updatedAt: new Date()
-    };
+    // Normalize and validate incoming fields
+    const {
+      title,
+      description,
+      category,
+      startDate,
+      endDate,
+      location,
+      venue,
+      ticketPrice,
+      capacity,
+      imageUrl,
+      imageUrls,
+      tags,
+      socialMediaPostUrl,
+      paymentMethod,
+      organizerQRCode,
+      paymentInstructions
+    } = req.body;
+
+    const updates = { updatedAt: new Date() };
+
+    if (typeof title === 'string') updates.title = title;
+    if (typeof description === 'string') updates.description = description;
+    if (typeof category === 'string') updates.category = category;
+    if (startDate) updates.startDate = new Date(startDate);
+    if (endDate) updates.endDate = new Date(endDate);
+    if (typeof location === 'string') updates.location = location;
+    if (typeof venue === 'string') updates.venue = venue;
+    if (ticketPrice !== undefined) updates.ticketPrice = parseFloat(ticketPrice);
+    if (capacity !== undefined) updates.capacity = parseInt(capacity);
+    if (typeof imageUrl === 'string') updates.imageUrl = imageUrl;
+    if (Array.isArray(imageUrls)) updates.imageUrls = imageUrls;
+    if (Array.isArray(tags)) updates.tags = tags; // already split on client
+    if (typeof socialMediaPostUrl === 'string') updates.socialMediaPostUrl = socialMediaPostUrl;
+    if (typeof paymentMethod === 'string') updates.paymentMethod = paymentMethod;
+    if (typeof organizerQRCode === 'string') updates.organizerQRCode = organizerQRCode;
+    if (typeof paymentInstructions === 'string') updates.paymentInstructions = paymentInstructions;
 
     await db.collection('events').doc(id).update(updates);
 
-    res.json({ message: 'Event updated successfully' });
+    const updatedDoc = await db.collection('events').doc(id).get();
+    res.json({ message: 'Event updated successfully', event: { id, ...updatedDoc.data() } });
   } catch (error) {
     next(error);
   }
@@ -179,19 +227,42 @@ export const deleteEvent = async (req, res, next) => {
   }
 };
 
+export const getEventsByOrganizerPublic = async (req, res, next) => {
+  try {
+    const { clubId } = req.params;
+    const snapshot = await db.collection('events')
+      .where('organizerId', '==', clubId)
+      .get();
+
+    const events = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(ev => ev.status !== 'cancelled');
+
+    res.json({ events });
+  } catch (error) {
+    next(error);
+  }
+};
 export const getMyEvents = async (req, res, next) => {
   try {
     const userId = req.user.uid;
     
+    // Get events without orderBy to avoid needing a composite index
     const snapshot = await db.collection('events')
       .where('organizerId', '==', userId)
-      .orderBy('startDate', 'asc')
       .get();
 
-    const events = snapshot.docs.map(doc => ({
+    let events = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+
+    // Sort by startDate client-side
+    events.sort((a, b) => {
+      const dateA = a.startDate?.seconds || 0;
+      const dateB = b.startDate?.seconds || 0;
+      return dateA - dateB;
+    });
 
     res.json({ events, total: events.length });
   } catch (error) {

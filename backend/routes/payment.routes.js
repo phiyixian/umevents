@@ -1,26 +1,32 @@
 import express from 'express';
 import {
-  initiatePayment,
-  handlePaymentCallback,
+  initiateTicketPayment,
+  handleToyyibPayCallback,
   getPaymentStatus,
-  refundPayment
+  getOrganizerFinance,
+  updateClubPaymentSettings,
+  applyToyyibPayForClub,
+  approveToyyibPayForClub
 } from '../controllers/payment.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { paymentLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-// Protected routes
-router.post('/initiate', authenticate, paymentLimiter, initiatePayment);
+// Ticket purchase payment (protected)
+router.post('/tickets/purchase', authenticate, paymentLimiter, initiateTicketPayment);
 router.get('/status/:paymentId', authenticate, getPaymentStatus);
 
-// Webhook routes (no auth required for security validation)
-router.post('/callback', handlePaymentCallback);
-router.post('/webhook/toyyibpay', handlePaymentCallback);
-router.post('/webhook/billplz', handlePaymentCallback);
+// ToyyibPay callback (webhook - no auth)
+router.post('/toyyibpay/callback', handleToyyibPayCallback);
 
-// Admin only routes
-router.post('/refund/:paymentId', authenticate, refundPayment);
+// Club/Organizer routes
+router.get('/finance', authenticate, getOrganizerFinance);
+router.put('/settings', authenticate, updateClubPaymentSettings);
+
+// ToyyibPay application flow
+router.post('/toyyibpay/apply', authenticate, applyToyyibPayForClub);
+router.post('/toyyibpay/approve/:clubId', authenticate, authorize('admin'), approveToyyibPayForClub);
 
 export default router;
 

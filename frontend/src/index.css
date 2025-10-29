@@ -1,27 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Schoolbell&family=Ma+Shan+Zheng&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply border-border;
-  }
   body {
     @apply bg-gray-50 text-gray-900;
+  }
+  
+  /* Apply Poppins to body and paragraphs */
+  body, p {
+    font-family: 'Poppins', sans-serif !important;
+  }
+  
+  /* Apply Schoolbell to all headers */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Schoolbell', cursive !important;
   }
 }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
   }
   
   .btn-primary {
-    @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
+    @apply text-white shadow-md hover:shadow-lg;
+    background-color: #001A4A;
+  }
+  
+  .btn-primary:hover {
+    background-color: #00133A;
+  }
+  
+  .btn-primary:active {
+    background-color: #000D29;
   }
   
   .btn-secondary {
-    @apply bg-gray-200 text-gray-900 hover:bg-gray-300 active:bg-gray-400;
+    background-color: #F3F4F6;
+    color: #111827;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #E5E7EB;
+  }
+  
+  .btn-secondary:active {
+    background-color: #D1D5DB;
   }
   
   .btn-danger {
@@ -29,11 +56,22 @@
   }
   
   .input {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent;
+    border-color: #D1D5DB;
+  }
+  
+  .input:focus {
+    outline-color: #334785;
+    box-shadow: 0 0 0 2px rgba(51, 71, 133, 0.2);
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-white rounded-lg p-6 hover:shadow-lg transition-shadow duration-200;
+    box-shadow: 0 6px 16px rgba(0, 32, 91, 0.08);
+  }
+  
+  .heading {
+    font-family: 'Schoolbell', cursive;
   }
 }
 

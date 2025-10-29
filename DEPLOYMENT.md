@@ -329,3 +329,51 @@ For deployment issues:
 - Test locally first
 - Contact platform support
 
+---
+
+## Cheapest Stack: Cloud Run (Backend) + Firebase Hosting (Frontend)
+
+### Backend: Deploy to Cloud Run
+
+1) Prerequisites
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+2) Build and deploy
+```bash
+cd backend
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/umevents-backend
+gcloud run deploy umevents-backend \
+  --image gcr.io/YOUR_PROJECT_ID/umevents-backend \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-env-vars "PORT=8080,FIREBASE_PROJECT_ID=...,FIREBASE_PRIVATE_KEY_ID=...,FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n,FIREBASE_CLIENT_EMAIL=...,FIREBASE_CLIENT_ID=...,FIREBASE_CLIENT_X509_CERT_URL=...,FIREBASE_STORAGE_BUCKET=...,FRONTEND_URL=https://your-frontend.web.app"
+```
+Note: Keep `\n` newlines in `FIREBASE_PRIVATE_KEY` and quote the value.
+
+3) Copy the Cloud Run URL (e.g. `https://umevents-backend-xxxxx-…run.app`).
+
+### Frontend: Deploy to Firebase Hosting
+
+1) Set API base URL
+```env
+VITE_API_URL=https://YOUR_CLOUD_RUN_URL/api
+```
+
+2) Build and deploy
+```bash
+npm i -g firebase-tools
+firebase login
+firebase use YOUR_PROJECT_ID
+cd frontend
+npm ci
+npm run build
+firebase deploy --only hosting
+```
+
+### Post-deploy
+- Update backend `FRONTEND_URL` env to your Firebase Hosting URL
+- Verify health: `https://YOUR_CLOUD_RUN_URL/api/health`
+
