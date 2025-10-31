@@ -64,8 +64,8 @@ const ClubIntroPage = () => {
           {events.map(ev => (
             <Link key={ev.id} to={`/events/${ev.id}`} className="card hover:shadow-lg transition-shadow">
               <div className="h-40 bg-gray-200 rounded-lg mb-3 overflow-hidden">
-                {ev.imageUrl ? (
-                  <img src={ev.imageUrl} alt={ev.title} className="w-full h-full object-cover" />
+                {(ev.imageUrl || (ev.imageUrls && ev.imageUrls.length > 0)) ? (
+                  <img src={ev.imageUrl || ev.imageUrls[0]} alt={ev.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400">No Image</div>
                 )}

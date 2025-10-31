@@ -4,6 +4,10 @@ const RoleSelectPage = () => {
   const navigate = useNavigate();
 
   const goToRegister = (role) => {
+    // Persist selected role for Google sign-in across pages/redirects
+    try {
+      sessionStorage.setItem('selectedRole', role);
+    } catch (_) {}
     // Navigate to role-specific registration page
     if (role === 'student') {
       navigate('/student-register');

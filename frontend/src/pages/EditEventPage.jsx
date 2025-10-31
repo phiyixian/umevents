@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import firebaseApp from '../config/firebase';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import api from '../config/axios';
 import toast from 'react-hot-toast';
 import { useUserStore } from '../store/userStore';
@@ -11,6 +9,7 @@ const EditEventPage = () => {
   const { id } = useParams();
   const { verificationStatus } = useUserStore();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Fetch event data
   const { data: eventData, isLoading: isLoadingEvent } = useQuery(
@@ -37,11 +36,14 @@ const EditEventPage = () => {
     socialMediaPostUrl: '',
     paymentMethod: 'toyyibpay',
     organizerQRCode: '',
-    paymentInstructions: ''
+    paymentInstructions: '',
+    whatsappGroupLink: ''
   });
 
   const [imageFiles, setImageFiles] = useState([]);
   const [imageUrls, setImageUrls] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
+  const [originalImageUrls, setOriginalImageUrls] = useState([]); // Track original URLs to detect deletions
 
   // Populate form when event data loads
   useEffect(() => {
@@ -66,8 +68,12 @@ const EditEventPage = () => {
           else if (timestamp && typeof timestamp.toDate === 'function') {
             date = timestamp.toDate();
           }
-          // Handle ISO string or timestamp number
-          else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+          // Handle ISO string (most common after backend conversion)
+          else if (typeof timestamp === 'string') {
+            date = new Date(timestamp);
+          }
+          // Handle timestamp number
+          else if (typeof timestamp === 'number') {
             date = new Date(timestamp);
           }
           // Handle Date objects
@@ -89,8 +95,15 @@ const EditEventPage = () => {
             return '';
           }
           
-          const formatted = date.toISOString().slice(0, 16);
-          console.log('Formatted date:', formatted);
+          // Convert to local datetime-local format (YYYY-MM-DDTHH:mm)
+          // datetime-local expects local time, not UTC
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
+          console.log('Formatted date (local):', formatted, 'from UTC:', date.toISOString());
           return formatted;
         } catch (error) {
           console.error('Date formatting error:', error, 'Input:', timestamp);
@@ -114,21 +127,41 @@ const EditEventPage = () => {
         socialMediaPostUrl: eventData.socialMediaPostUrl || '',
         paymentMethod: eventData.paymentMethod || 'toyyibpay',
         organizerQRCode: eventData.organizerQRCode || '',
-        paymentInstructions: eventData.paymentInstructions || ''
+        paymentInstructions: eventData.paymentInstructions || '',
+        whatsappGroupLink: eventData.whatsappGroupLink || ''
       });
       
       // Set image URLs if they exist
       if (eventData.imageUrls && eventData.imageUrls.length > 0) {
         setImageUrls(eventData.imageUrls);
+        setOriginalImageUrls(eventData.imageUrls); // Track original for deletion detection
       } else if (eventData.imageUrl) {
         setImageUrls([eventData.imageUrl]);
+        setOriginalImageUrls([eventData.imageUrl]);
+      }
+      
+      // Set custom fields if they exist
+      if (eventData.customFields && eventData.customFields.length > 0) {
+        setCustomFields(eventData.customFields.map((field, index) => ({
+          id: Date.now() + index,
+          label: field.label || '',
+          type: field.type || 'text',
+          required: field.required || false,
+          options: (field.options || []).map((opt, optIndex) => ({
+            id: Date.now() + index * 1000 + optIndex,
+            value: typeof opt === 'string' ? opt : opt.value || ''
+          }))
+        })));
+      } else {
+        setCustomFields([]);
       }
     }
   }, [eventData]);
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
-    setImageFiles(files);
+    // Append to existing files
+    setImageFiles(prevFiles => [...prevFiles, ...files]);
     
     // Create preview URLs for selected files
     const urls = files.map(file => URL.createObjectURL(file));
@@ -141,9 +174,70 @@ const EditEventPage = () => {
     // Revoke object URLs if it's a blob URL
     if (imageUrls[index].startsWith('blob:')) {
       URL.revokeObjectURL(imageUrls[index]);
+      // Also remove corresponding file from imageFiles
+      const blobIndex = imageFiles.findIndex((_, i) => {
+        // Find which file corresponds to this blob URL
+        const tempUrls = imageFiles.slice(0, i + 1).map(f => URL.createObjectURL(f));
+        return tempUrls[tempUrls.length - 1] === imageUrls[index];
+      });
+      if (blobIndex >= 0) {
+        setImageFiles(prevFiles => prevFiles.filter((_, i) => i !== blobIndex));
+      }
     }
     
     setImageUrls(newUrls);
+  };
+
+  const addCustomField = () => {
+    setCustomFields([...customFields, {
+      id: Date.now(),
+      label: '',
+      type: 'text',
+      required: false,
+      options: []
+    }]);
+  };
+
+  const updateCustomField = (id, updates) => {
+    setCustomFields(customFields.map(field => 
+      field.id === id ? { ...field, ...updates } : field
+    ));
+  };
+
+  const removeCustomField = (id) => {
+    setCustomFields(customFields.filter(field => field.id !== id));
+  };
+
+  const addOptionToField = (fieldId) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId 
+        ? { ...field, options: [...(field.options || []), { id: Date.now(), value: '' }] }
+        : field
+    ));
+  };
+
+  const updateOptionInField = (fieldId, optionId, value) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId
+        ? {
+            ...field,
+            options: field.options.map(opt => 
+              opt.id === optionId ? { ...opt, value } : opt
+            )
+          }
+        : field
+    ));
+  };
+
+  const removeOptionFromField = (fieldId, optionId) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId
+        ? {
+            ...field,
+            options: field.options.filter(opt => opt.id !== optionId)
+          }
+        : field
+    ));
   };
 
   const updateEventMutation = useMutation(
@@ -154,6 +248,10 @@ const EditEventPage = () => {
     {
       onSuccess: (data) => {
         toast.success('Event updated successfully!');
+        // Invalidate lists and detail so cards and pages refresh
+        queryClient.invalidateQueries(['events'], { refetchActive: true });
+        queryClient.invalidateQueries(['myEvents'], { refetchActive: true });
+        queryClient.invalidateQueries(['event', id], { refetchActive: true });
         // Navigate to the updated event detail page to show latest info
         navigate(`/events/${id}`);
       },
@@ -174,25 +272,50 @@ const EditEventPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Upload any newly selected images to Firebase Storage
+    // Upload any newly selected images via backend API (avoids CORS issues)
     let downloadUrls = [];
     try {
       if (imageFiles.length > 0) {
-        const storage = getStorage(firebaseApp);
-        const uploads = imageFiles.map(async (file) => {
-          const fileRef = ref(storage, `events/${Date.now()}_${file.name}`);
-          await uploadBytes(fileRef, file);
-          return await getDownloadURL(fileRef);
+        // Create FormData for multiple files
+        const formDataUpload = new FormData();
+        imageFiles.forEach((file) => {
+          formDataUpload.append('images', file);
         });
-        downloadUrls = await Promise.all(uploads);
+        
+        // Upload via backend
+        const uploadResponse = await api.post('/upload/event-images', formDataUpload);
+        downloadUrls = uploadResponse.data.imageUrls || [];
       }
     } catch (err) {
       console.error('Image upload failed:', err);
-      return toast.error('Failed to upload images');
+      toast.error('Failed to upload images');
+      return;
     }
 
     // Merge existing URLs with newly uploaded ones, ignore blob previews
-    const mergedUrls = [...imageUrls.filter(u => !u.startsWith('blob:')), ...downloadUrls];
+    const existingUrls = imageUrls.filter(u => !u.startsWith('blob:'));
+    const mergedUrls = [...existingUrls, ...downloadUrls];
+    
+    // Find images that were removed (in original but not in merged)
+    const removedImageUrls = originalImageUrls.filter(url => !mergedUrls.includes(url));
+    
+    // Delete removed images from Firebase Storage
+    for (const imageUrl of removedImageUrls) {
+      try {
+        // Axios delete with body data
+        await api.request({
+          method: 'DELETE',
+          url: '/upload/image',
+          data: { imageUrl }
+        });
+      } catch (error) {
+        console.error('Failed to delete image:', imageUrl, error);
+        // Continue with update even if deletion fails
+      }
+    }
+    
+    // Clear image files after successful upload
+    setImageFiles([]);
 
     updateEventMutation.mutate({
       ...formData,

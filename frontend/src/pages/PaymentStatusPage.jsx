@@ -46,23 +46,24 @@ const PaymentStatusPage = () => {
           setStatus(paymentStatus);
           
           if (paymentStatus === 'completed') {
-            // Invalidate event query to ensure ticketsSold is refreshed
+            // Invalidate ALL queries to ensure fresh data
             if (paymentEventId) {
-              queryClient.invalidateQueries(['event', paymentEventId]);
+              queryClient.invalidateQueries(['event', paymentEventId], { refetchActive: true });
             }
             // Also invalidate all events to refresh list views
-            queryClient.invalidateQueries(['events']);
+            queryClient.invalidateQueries(['events'], { refetchActive: true });
             // Refresh tickets list as well
-            queryClient.invalidateQueries(['myTickets']);
+            queryClient.invalidateQueries(['myTickets'], { refetchActive: true });
             
-            // Success: go to tickets with success message
-            navigate('/my-tickets', { 
-              replace: true,
-              state: { 
-                paymentSuccess: true,
-                message: 'Payment successful! Your ticket has been purchased.'
-              }
-            });
+            // Add a small delay to ensure backend has processed the callback
+            setTimeout(() => {
+              navigate('/my-tickets', { 
+                replace: true,
+                state: { 
+                  // Don't pass paymentSuccess - let MyTicketsPage handle silently
+                }
+              });
+            }, 1000);
             return;
           } else if (paymentStatus === 'failed') {
             // Failed: stop polling and redirect

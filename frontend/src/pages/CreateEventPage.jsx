@@ -21,11 +21,13 @@ const CreateEventPage = () => {
     capacity: '',
     imageUrl: '',
     tags: '',
-    socialMediaPostUrl: ''
+    socialMediaPostUrl: '',
+    whatsappGroupLink: ''
   });
 
   const [imageFiles, setImageFiles] = useState([]);
   const [imageUrls, setImageUrls] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
   
   const navigate = useNavigate();
 
@@ -73,6 +75,58 @@ const CreateEventPage = () => {
     setImageUrls(newUrls);
   };
 
+  const addCustomField = () => {
+    setCustomFields([...customFields, {
+      id: Date.now(),
+      label: '',
+      type: 'text', // text, textarea, file, single-select, multiple-select
+      required: false,
+      options: [] // For select types
+    }]);
+  };
+
+  const updateCustomField = (id, updates) => {
+    setCustomFields(customFields.map(field => 
+      field.id === id ? { ...field, ...updates } : field
+    ));
+  };
+
+  const removeCustomField = (id) => {
+    setCustomFields(customFields.filter(field => field.id !== id));
+  };
+
+  const addOptionToField = (fieldId) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId 
+        ? { ...field, options: [...(field.options || []), { id: Date.now(), value: '' }] }
+        : field
+    ));
+  };
+
+  const updateOptionInField = (fieldId, optionId, value) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId
+        ? {
+            ...field,
+            options: field.options.map(opt => 
+              opt.id === optionId ? { ...opt, value } : opt
+            )
+          }
+        : field
+    ));
+  };
+
+  const removeOptionFromField = (fieldId, optionId) => {
+    setCustomFields(customFields.map(field => 
+      field.id === fieldId
+        ? {
+            ...field,
+            options: field.options.filter(opt => opt.id !== optionId)
+          }
+        : field
+    ));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -93,17 +147,32 @@ const CreateEventPage = () => {
       return toast.error('Failed to upload images');
     }
 
+    // All images go into imageUrls array (no separate imageUrl field)
     const imageUrlList = downloadUrls.length > 0
       ? downloadUrls
-      : (formData.imageUrl ? [formData.imageUrl] : []);
+      : [];
     
+    // Validate custom fields before submission
+    const validatedCustomFields = customFields
+      .filter(field => field.label.trim()) // Only include fields with labels
+      .map(field => ({
+        label: field.label.trim(),
+        type: field.type,
+        required: field.required || false,
+        options: field.options && field.options.length > 0 
+          ? field.options.map(opt => opt.value).filter(opt => opt.trim())
+          : []
+      }));
+
     createEventMutation.mutate({
       ...formData,
       ticketPrice: parseFloat(formData.ticketPrice),
       capacity: parseInt(formData.capacity),
       tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
       imageUrls: imageUrlList, // Array of image URLs
-      socialMediaPostUrl: formData.socialMediaPostUrl
+      socialMediaPostUrl: formData.socialMediaPostUrl,
+      whatsappGroupLink: formData.whatsappGroupLink || '',
+      customFields: validatedCustomFields
     });
   };
 
@@ -348,6 +417,143 @@ const CreateEventPage = () => {
             onChange={handleChange}
             placeholder="e.g., networking, free, open-to-all"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            WhatsApp Group Link (Optional)
+          </label>
+          <input
+            type="url"
+            name="whatsappGroupLink"
+            className="input"
+            value={formData.whatsappGroupLink}
+            onChange={handleChange}
+            placeholder="https://chat.whatsapp.com/..."
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Share the WhatsApp group invite link. This will be displayed on purchased tickets.
+          </p>
+        </div>
+
+        {/* Custom Form Fields Builder */}
+        <div className="border-t pt-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700">Additional Form Fields</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Add custom questions or fields that attendees need to fill when purchasing tickets
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addCustomField}
+              className="btn btn-secondary text-sm"
+            >
+              + Add Field
+            </button>
+          </div>
+
+          {customFields.length === 0 ? (
+            <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+              <p className="text-gray-500 text-sm">No custom fields added yet</p>
+              <p className="text-gray-400 text-xs mt-1">Click "Add Field" to create a custom question</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {customFields.map((field, index) => (
+                <div key={field.id} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                  <div className="grid md:grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Field Label *
+                      </label>
+                      <input
+                        type="text"
+                        className="input text-sm"
+                        value={field.label}
+                        onChange={(e) => updateCustomField(field.id, { label: e.target.value })}
+                        placeholder="e.g., Dietary Requirements"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Field Type *
+                      </label>
+                      <select
+                        className="input text-sm"
+                        value={field.type}
+                        onChange={(e) => updateCustomField(field.id, { type: e.target.value })}
+                      >
+                        <option value="text">Text Input</option>
+                        <option value="textarea">Text Area</option>
+                        <option value="file">File Upload</option>
+                        <option value="single-select">Single Selection</option>
+                        <option value="multiple-select">Multiple Selection</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Options for select types */}
+                  {(field.type === 'single-select' || field.type === 'multiple-select') && (
+                    <div className="mb-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-xs font-medium text-gray-700">
+                          Options
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => addOptionToField(field.id)}
+                          className="text-xs text-umblue-600 hover:text-umblue-700"
+                        >
+                          + Add Option
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {(field.options || []).map((option) => (
+                          <div key={option.id} className="flex gap-2">
+                            <input
+                              type="text"
+                              className="input text-sm flex-1"
+                              value={option.value}
+                              onChange={(e) => updateOptionInField(field.id, option.id, e.target.value)}
+                              placeholder="Option value"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeOptionFromField(field.id, option.id)}
+                              className="text-red-500 hover:text-red-700 text-sm"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={field.required || false}
+                        onChange={(e) => updateCustomField(field.id, { required: e.target.checked })}
+                        className="rounded"
+                      />
+                      Required field
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeCustomField(field.id)}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      Remove Field
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4">

@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
 
 const Navbar = () => {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { user, signOut } = useAuth();
   const { name, role } = useUserStore();
 
@@ -40,9 +42,6 @@ const Navbar = () => {
                 
                 {role === 'club' && (
                   <>
-                    <Link to="/transactions" className="text-gray-700 hover:text-umblue-600 transition">
-                      Transactions
-                    </Link>
                     <Link to="/create-event" className="text-gray-700 hover:text-umblue-600 transition">
                       Create Event
                     </Link>
@@ -87,12 +86,50 @@ const Navbar = () => {
           </div>
 
           {/* Mobile menu button */}
-          <button className="md:hidden text-gray-700">
+          <button className="md:hidden text-gray-700" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle menu" aria-expanded={mobileOpen}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
         </div>
+        {/* Mobile menu panel */}
+        {mobileOpen && (
+          <div className="md:hidden absolute left-0 right-0 top-full bg-white shadow-lg border-t z-40">
+            <div className="container mx-auto px-4 py-3 flex flex-col gap-2">
+              <Link to="/" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Home</Link>
+              <Link to="/events" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Events</Link>
+            {user ? (
+              <>
+                {role === 'student' && (
+                  <>
+                    <Link to="/my-tickets" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>My Tickets</Link>
+                    <Link to="/transactions" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Transactions</Link>
+                  </>
+                )}
+                {role === 'club' && (
+                  <>
+                    <Link to="/create-event" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Create Event</Link>
+                    <Link to="/analytics" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Analytics</Link>
+                  </>
+                )}
+                {role === 'admin' && (
+                  <>
+                    <Link to="/admin/verifications" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Verify Clubs</Link>
+                    <Link to="/admin/analytics" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Platform Analytics</Link>
+                  </>
+                )}
+                <Link to="/profile" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>{name || 'Profile'}</Link>
+                <button onClick={() => { setMobileOpen(false); signOut(); }} className="btn btn-secondary w-full mt-1">Sign Out</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="block py-2 text-gray-700 hover:text-umblue-600" onClick={() => setMobileOpen(false)}>Login</Link>
+                <Link to="/start" className="btn btn-primary w-full mt-1" onClick={() => setMobileOpen(false)}>Sign Up</Link>
+              </>
+            )}
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

@@ -24,6 +24,7 @@ export const createBill = async ({
   billTo,
   billEmail,
   billPhone,
+  billExternalReferenceNo = '', // Our payment ID for tracking in callback
   billSplitPayment = '',
   billSplitPaymentArgs = '',
   billPaymentChannel = '0',
@@ -31,6 +32,12 @@ export const createBill = async ({
   billChargeToCustomer = ''
 }) => {
   try {
+    if (!TOYYIBPAY_SECRET_KEY || TOYYIBPAY_SECRET_KEY.trim() === '') {
+      const err = new Error('ToyyibPay userSecretKey is not configured');
+      err.code = 'TOYYIBPAY_SECRET_MISSING';
+      err.status = 500;
+      throw err;
+    }
     const form = new URLSearchParams();
     form.append('userSecretKey', TOYYIBPAY_SECRET_KEY || '');
     form.append('categoryCode', categoryCode);
@@ -43,6 +50,9 @@ export const createBill = async ({
     form.append('billTo', billTo || '');
     form.append('billEmail', billEmail || '');
     form.append('billPhone', billPhone || '');
+    if (billExternalReferenceNo) {
+      form.append('billExternalReferenceNo', billExternalReferenceNo);
+    }
     
     // billPayorInfo: 0 = open bill (no payer info required), 1 = require payer information
     // Since we're providing billTo, billEmail, billPhone, we set it to 1

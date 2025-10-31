@@ -5,7 +5,9 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
@@ -28,6 +30,37 @@ export const AuthProvider = ({ children }) => {
   const { setUserStore } = useUserStore();
 
   useEffect(() => {
+    // Handle redirect result (fallback path when popups are blocked)
+    (async () => {
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult?.user) {
+          const selectedRole = sessionStorage.getItem('selectedRole') || 'student';
+          // Ensure Firestore doc exists
+          const userDoc = await getDoc(doc(db, 'users', redirectResult.user.uid));
+          if (!userDoc.exists()) {
+            const { doc: document, setDoc } = await import('firebase/firestore');
+            const userData = {
+              uid: redirectResult.user.uid,
+              email: redirectResult.user.email,
+              name: redirectResult.user.displayName || 'User',
+              photoURL: redirectResult.user.photoURL,
+              role: selectedRole,
+              provider: 'google',
+              ...(selectedRole === 'club' && { verificationStatus: 'pending' }),
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            await setDoc(document(db, 'users', redirectResult.user.uid), userData);
+            setUserStore({ uid: redirectResult.user.uid, email: redirectResult.user.email, ...userData });
+          }
+        }
+      } catch (e) {
+        // Swallow redirect result errors; onAuthStateChanged will still run
+        console.error('Google redirect result error:', e);
+      }
+    })();
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Get additional user data from Firestore
@@ -44,13 +77,15 @@ export const AuthProvider = ({ children }) => {
             // First-time Google sign-in - create user document
             if (firebaseUser.providerData[0]?.providerId === 'google.com') {
               try {
+                const selectedRole = sessionStorage.getItem('selectedRole') || 'student';
                 const userData = {
                   uid: firebaseUser.uid,
                   email: firebaseUser.email,
                   name: firebaseUser.displayName || 'User',
                   photoURL: firebaseUser.photoURL,
-                  role: 'student',
+                  role: selectedRole,
                   provider: 'google',
+                  ...(selectedRole === 'club' && { verificationStatus: 'pending' }),
                   createdAt: new Date(),
                   updatedAt: new Date()
                 };
@@ -113,42 +148,64 @@ export const AuthProvider = ({ children }) => {
       if (!selectedRole) {
         throw new Error('Please select your role first');
       }
-      
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      // Persist selected role for redirect fallback / first-time doc
+      sessionStorage.setItem('selectedRole', selectedRole);
 
-      // Check if user document exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      
-      if (!userDoc.exists()) {
-        // First-time Google sign-in - create user document
-        const { doc: document, setDoc } = await import('firebase/firestore');
-        const userData = {
-          uid: user.uid,
-          email: user.email,
-          name: user.displayName || 'User',
-          photoURL: user.photoURL,
-          role: selectedRole,
-          provider: 'google',
-          ...(selectedRole === 'club' && { verificationStatus: 'pending' }),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        
-        await setDoc(document(db, 'users', user.uid), userData);
-        setUserStore({
-          uid: user.uid,
-          email: user.email,
-          ...userData
-        });
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+
+        // Ensure Firestore user doc exists
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (!userDoc.exists()) {
+          const { doc: document, setDoc } = await import('firebase/firestore');
+          const userData = {
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName || 'User',
+            photoURL: user.photoURL,
+            role: selectedRole,
+            provider: 'google',
+            ...(selectedRole === 'club' && { verificationStatus: 'pending' }),
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          await setDoc(document(db, 'users', user.uid), userData);
+          setUserStore({ uid: user.uid, email: user.email, ...userData });
+        }
+        toast.success('Logged in with Google!');
+      } catch (popupError) {
+        // If popups are blocked or unsupported, fall back to redirect
+        if (
+          popupError?.code === 'auth/popup-blocked' ||
+          popupError?.code === 'auth/popup-closed-by-user' ||
+          popupError?.code === 'auth/operation-not-supported-in-this-environment'
+        ) {
+          await signInWithRedirect(auth, provider);
+          return; // Flow continues after redirect
+        }
+        throw popupError;
       }
-      
-      toast.success('Logged in with Google!');
     } catch (error) {
       console.error('Google sign-in error:', error);
-      const errorMessage = error.message || 'Failed to sign in with Google';
-      toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to sign in with Google');
+      // Map common Firebase Auth errors to helpful messages
+      const code = error?.code;
+      let message = 'Failed to sign in with Google';
+      if (code === 'auth/unauthorized-domain') {
+        message = 'This domain is not authorized for Google sign-in. Add it in Firebase Auth settings > Authorized domains.';
+      } else if (code === 'auth/account-exists-with-different-credential') {
+        message = 'An account already exists with a different sign-in method. Try email/password or link providers.';
+      } else if (code === 'auth/cancelled-popup-request' || code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in was cancelled. Please try again.';
+      } else if (code === 'auth/operation-not-supported-in-this-environment') {
+        message = 'This browser blocks popups. We attempted a redirect sign-in. If it didn’t start, enable popups or try another browser.';
+      } else if (error?.message) {
+        message = error.message;
+      }
+      toast.error(message);
       throw error;
     }
   };

@@ -13,6 +13,7 @@ import paymentRoutes from './routes/payment.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import userRoutes from './routes/user.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
+import feedbackRoutes from './routes/feedback.routes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -46,6 +47,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

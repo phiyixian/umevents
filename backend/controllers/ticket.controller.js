@@ -10,7 +10,7 @@ const generateQRCodeDataURL = async (data) => {
 
 export const purchaseTicket = async (req, res, next) => {
   try {
-    const { eventId, quantity = 1 } = req.body;
+    const { eventId, quantity = 1, customResponses = {} } = req.body;
     const userId = req.user.uid;
 
     // Get event details
@@ -53,7 +53,9 @@ export const purchaseTicket = async (req, res, next) => {
         totalAmount: eventData.ticketPrice * quantity,
         qrCode: null,
         checkedIn: false,
-        checkedInAt: null
+        checkedInAt: null,
+        customResponses: customResponses || {},
+        whatsappJoined: false
       };
 
       const ticketRef = await db.collection('tickets').add(ticketData);
@@ -72,6 +74,27 @@ export const purchaseTicket = async (req, res, next) => {
         title: eventData.title
       }
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const markWhatsappJoined = async (req, res, next) => {
+  try {
+    const { id } = req.params; // ticket id
+    const userId = req.user.uid;
+
+    const ticketRef = db.collection('tickets').doc(id);
+    const ticketDoc = await ticketRef.get();
+    if (!ticketDoc.exists) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    const ticket = ticketDoc.data();
+    if (ticket.userId !== userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    await ticketRef.update({ whatsappJoined: true, whatsappJoinedAt: new Date() });
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
@@ -97,14 +120,30 @@ export const getMyTickets = async (req, res, next) => {
         const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
         if (eventDoc.exists) {
           const eventData = eventDoc.data();
+          // Convert dates using robust conversion (handles Firestore Timestamps and ISO strings)
+          const convertDate = (dateField) => {
+            if (!dateField) return dateField;
+            if (dateField.toDate && typeof dateField.toDate === 'function') {
+              return dateField.toDate().toISOString();
+            } else if (dateField.seconds) {
+              return new Date(dateField.seconds * 1000).toISOString();
+            } else if (dateField._seconds) {
+              return new Date(dateField._seconds * 1000).toISOString();
+            } else if (dateField instanceof Date) {
+              return dateField.toISOString();
+            } else if (typeof dateField === 'string') {
+              return dateField; // Already ISO string
+            }
+            return dateField;
+          };
+          
           event = {
             id: eventDoc.id,
             ...eventData,
-            // Convert Firestore timestamps to ISO strings for serialization
-            startDate: eventData.startDate?.toDate ? eventData.startDate.toDate().toISOString() : eventData.startDate,
-            endDate: eventData.endDate?.toDate ? eventData.endDate.toDate().toISOString() : eventData.endDate,
-            createdAt: eventData.createdAt?.toDate ? eventData.createdAt.toDate().toISOString() : eventData.createdAt,
-            updatedAt: eventData.updatedAt?.toDate ? eventData.updatedAt.toDate().toISOString() : eventData.updatedAt
+            startDate: convertDate(eventData.startDate),
+            endDate: convertDate(eventData.endDate),
+            createdAt: convertDate(eventData.createdAt),
+            updatedAt: convertDate(eventData.updatedAt)
           };
         }
       }
@@ -204,12 +243,32 @@ export const getTicketById = async (req, res, next) => {
       paidAt: ticketData.paidAt?.toDate ? ticketData.paidAt.toDate().toISOString() : ticketData.paidAt,
       confirmedAt: ticketData.confirmedAt?.toDate ? ticketData.confirmedAt.toDate().toISOString() : ticketData.confirmedAt,
       checkedInAt: ticketData.checkedInAt?.toDate ? ticketData.checkedInAt.toDate().toISOString() : ticketData.checkedInAt,
-      event: eventDoc.exists ? { 
-        id: eventDoc.id, 
-        ...eventDoc.data(),
-        startDate: eventDoc.data().startDate?.toDate ? eventDoc.data().startDate.toDate().toISOString() : eventDoc.data().startDate,
-        endDate: eventDoc.data().endDate?.toDate ? eventDoc.data().endDate.toDate().toISOString() : eventDoc.data().endDate
-      } : null,
+      event: eventDoc.exists ? (() => {
+        const eventData = eventDoc.data();
+        const convertDate = (dateField) => {
+          if (!dateField) return dateField;
+          if (dateField.toDate && typeof dateField.toDate === 'function') {
+            return dateField.toDate().toISOString();
+          } else if (dateField.seconds) {
+            return new Date(dateField.seconds * 1000).toISOString();
+          } else if (dateField._seconds) {
+            return new Date(dateField._seconds * 1000).toISOString();
+          } else if (dateField instanceof Date) {
+            return dateField.toISOString();
+          } else if (typeof dateField === 'string') {
+            return dateField; // Already ISO string
+          }
+          return dateField;
+        };
+        return {
+          id: eventDoc.id,
+          ...eventData,
+          startDate: convertDate(eventData.startDate),
+          endDate: convertDate(eventData.endDate),
+          createdAt: convertDate(eventData.createdAt),
+          updatedAt: convertDate(eventData.updatedAt)
+        };
+      })() : null,
       payment
     };
 

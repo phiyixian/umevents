@@ -26,9 +26,24 @@ const EventDetailPage = () => {
       refetchOnWindowFocus: false,
       refetchOnMount: true, // Refetch when returning to page
       refetchOnReconnect: false,
-      staleTime: 10000, // Reduced to 10 seconds to allow updates
+      staleTime: 5000, // Reduced to 5 seconds to allow faster updates
       retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
+    }
+  );
+
+  // Fetch latest club/organizer profile information
+  const { data: clubData } = useQuery(
+    ['club', eventData?.event?.organizerId],
+    async () => {
+      if (!eventData?.event?.organizerId) return null;
+      const response = await api.get(`/auth/public/club/${eventData.event.organizerId}`);
+      return response.data;
+    },
+    {
+      enabled: !!eventData?.event?.organizerId,
+      staleTime: 30000, // Cache for 30 seconds
+      refetchOnMount: true, // Always refetch to get latest club info
     }
   );
 
@@ -40,7 +55,7 @@ const EventDetailPage = () => {
         icon: '🎉'
       });
       // Invalidate and refetch event data to get updated ticketsSold
-      queryClient.invalidateQueries(['event', id]);
+      queryClient.invalidateQueries(['event', id], { refetchActive: true });
       refetch();
       // Clear the state so it doesn't show again on refresh
       navigate(location.pathname, { replace: true, state: {} });
@@ -55,13 +70,23 @@ const EventDetailPage = () => {
     }
   }, [location.state, navigate, location.pathname, id, queryClient, refetch]);
 
+  // Custom responses modal state
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customResponses, setCustomResponses] = useState({});
+  const [customErrors, setCustomErrors] = useState({});
+  const [fileBuffers, setFileBuffers] = useState({}); // fieldLabel -> File[]
+
+  const resetCustomForm = () => {
+    setShowCustomForm(false);
+    setCustomResponses({});
+    setCustomErrors({});
+    setFileBuffers({});
+  };
+
   const buyTicketMutation = useMutation(
-    async () => {
+    async (payload) => {
       // Call new payment endpoint that creates bill and returns payment URL
-      const response = await api.post('/payments/tickets/purchase', {
-        eventId: id,
-        quantity: 1
-      });
+      const response = await api.post('/payments/tickets/purchase', payload);
       return response.data;
     },
     {
@@ -78,6 +103,7 @@ const EventDetailPage = () => {
         } else {
           toast.success('Payment initiated.');
         }
+        resetCustomForm();
       },
       onError: (error) => {
         const errorData = error.response?.data || {};
@@ -114,22 +140,29 @@ const EventDetailPage = () => {
     );
   }
 
-  // Safely format dates
+  // Safely format dates (events should always have dates, backend now returns ISO strings)
   const formatDate = (dateInput) => {
-    if (!dateInput) return 'Date TBD';
+    if (!dateInput) {
+      console.error('Missing date input:', dateInput);
+      return 'Date not available';
+    }
     
     try {
       let date;
       
-      // Handle Firestore Timestamp object
-      if (typeof dateInput === 'object' && dateInput.seconds) {
-        date = new Date(dateInput.seconds * 1000);
-      } 
-      // Handle ISO string or timestamp number
-      else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+      // Handle ISO string (most common after backend conversion)
+      if (typeof dateInput === 'string') {
         date = new Date(dateInput);
-      } 
-      // Handle date-like objects (Firestore Timestamp can be serialized different ways)
+      }
+      // Handle Firestore Timestamp object with seconds
+      else if (typeof dateInput === 'object' && dateInput.seconds) {
+        date = new Date(dateInput.seconds * 1000);
+      }
+      // Handle timestamp number
+      else if (typeof dateInput === 'number') {
+        date = new Date(dateInput);
+      }
+      // Handle Date objects
       else if (dateInput instanceof Date) {
         date = dateInput;
       }
@@ -137,19 +170,25 @@ const EventDetailPage = () => {
       else if (dateInput && typeof dateInput.toDate === 'function') {
         date = dateInput.toDate();
       }
+      // Handle _seconds format from Firestore
+      else if (dateInput._seconds) {
+        date = new Date(dateInput._seconds * 1000);
+      }
       else {
-        return 'Date TBD';
+        console.error('Unknown date format:', dateInput);
+        return 'Invalid date format';
       }
       
       // Validate date
       if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return 'Date TBD';
+        console.error('Invalid date value:', dateInput);
+        return 'Invalid date';
       }
       
       return format(date, 'PPP p');
     } catch (error) {
       console.error('Date formatting error:', error, 'Input:', dateInput);
-      return 'Date TBD';
+      return 'Date formatting error';
     }
   };
 
@@ -161,11 +200,11 @@ const EventDetailPage = () => {
           <div className="card mb-6">
             {/* Image Carousel */}
             {event.imageUrls && event.imageUrls.length > 0 ? (
-              <div className="relative h-96 bg-gray-200 rounded-lg mb-4 overflow-hidden">
+              <div className="relative h-96 bg-gray-200 rounded-lg mb-4 overflow-hidden flex items-center justify-center">
                 <img 
                   src={event.imageUrls[currentImageIndex]} 
                   alt={`${event.title} - Image ${currentImageIndex + 1}`} 
-                  className="w-full h-full object-cover" 
+                  className="max-h-full max-w-full object-contain" 
                 />
                 
                 {/* Navigation arrows */}
@@ -213,8 +252,8 @@ const EventDetailPage = () => {
                 )}
               </div>
             ) : event.imageUrl ? (
-              <div className="h-96 bg-gray-200 rounded-lg mb-4 overflow-hidden">
-                <img src={event.imageUrl} alt={event.title} className="w-full h-full object-cover" />
+              <div className="h-96 bg-gray-200 rounded-lg mb-4 overflow-hidden flex items-center justify-center">
+                <img src={event.imageUrl} alt={event.title} className="max-h-full max-w-full object-contain" />
               </div>
             ) : (
               <div className="h-96 bg-gray-200 rounded-lg mb-4 overflow-hidden flex items-center justify-center text-gray-400">
@@ -308,14 +347,23 @@ const EventDetailPage = () => {
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">Organizer</h3>
             <Link to={`/clubs/${event.organizerId}`} className="flex items-center gap-3 mb-2 hover:opacity-90">
-              {event.organizerLogoUrl ? (
-                <img src={event.organizerLogoUrl} alt={event.organizerName} className="w-12 h-12 rounded-full object-cover" />
+              {/* Use latest club profile data if available, otherwise fallback to event data */}
+              {clubData?.club?.logoUrl || event.organizerLogoUrl ? (
+                <img 
+                  src={clubData?.club?.logoUrl || event.organizerLogoUrl} 
+                  alt={clubData?.club?.clubName || event.organizerName} 
+                  className="w-12 h-12 rounded-full object-cover" 
+                />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-gray-200" />)
-              }
+                <div className="w-12 h-12 rounded-full bg-gray-200" />
+              )}
               <div>
-                <p className="text-gray-600 font-medium">{event.organizerName}</p>
-                <p className="text-sm text-gray-500">{event.organizerEmail}</p>
+                <p className="text-gray-600 font-medium">
+                  {clubData?.club?.clubName || event.organizerName}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {clubData?.club?.email || event.organizerEmail}
+                </p>
               </div>
             </Link>
           </div>
@@ -357,13 +405,227 @@ const EventDetailPage = () => {
                   </p>
                 </div>
               ) : (
-                <button
-                  onClick={() => buyTicketMutation.mutate()}
-                  disabled={event.status !== 'published' || buyTicketMutation.isLoading}
-                  className="w-full btn btn-primary"
-                >
-                  {buyTicketMutation.isLoading ? 'Processing...' : 'Buy Ticket'}
-                </button>
+                <>
+                  <button
+                    onClick={async () => {
+                      // If event has custom fields, open modal
+                      const fields = event?.customFields || [];
+                      if (Array.isArray(fields) && fields.length > 0) {
+                        setShowCustomForm(true);
+                        return;
+                      }
+                      buyTicketMutation.mutate({ eventId: id, quantity: 1, customResponses: {} });
+                    }}
+                    disabled={event.status !== 'published' || buyTicketMutation.isLoading}
+                    className="w-full btn btn-primary"
+                  >
+                    {buyTicketMutation.isLoading ? 'Processing...' : 'Buy Ticket'}
+                  </button>
+
+                  {/* Custom Fields Modal */}
+                  {showCustomForm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={(e) => e.target === e.currentTarget && resetCustomForm()}>
+                      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h3 className="text-xl font-semibold">Additional Information Required</h3>
+                            <p className="text-sm text-gray-500 mt-1">Please fill in all required fields (*) to proceed with your ticket purchase</p>
+                          </div>
+                          <button onClick={resetCustomForm} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">×</button>
+                        </div>
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1 flex-1">
+                          {(event.customFields || []).map((field, idx) => {
+                            const label = field.label || `Field ${idx+1}`;
+                            const type = field.type || 'text';
+                            const required = !!field.required;
+                            const options = Array.isArray(field.options) ? field.options : [];
+                            const hasError = !!customErrors[label];
+                            return (
+                              <div key={idx} className={hasError ? 'border-l-4 border-red-500 pl-3' : ''}>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  {label} {required && <span className="text-red-500">*</span>}
+                                </label>
+                                {type === 'textarea' && (
+                                  <textarea
+                                    className={`input ${hasError ? 'border-red-500' : ''}`}
+                                    rows={4}
+                                    value={customResponses[label] || ''}
+                                    onChange={(e) => {
+                                      setCustomResponses({ ...customResponses, [label]: e.target.value });
+                                      if (customErrors[label]) {
+                                        const newErrors = { ...customErrors };
+                                        delete newErrors[label];
+                                        setCustomErrors(newErrors);
+                                      }
+                                    }}
+                                  />
+                                )}
+                                {type === 'text' && (
+                                  <input
+                                    type="text"
+                                    className={`input ${hasError ? 'border-red-500' : ''}`}
+                                    value={customResponses[label] || ''}
+                                    onChange={(e) => {
+                                      setCustomResponses({ ...customResponses, [label]: e.target.value });
+                                      if (customErrors[label]) {
+                                        const newErrors = { ...customErrors };
+                                        delete newErrors[label];
+                                        setCustomErrors(newErrors);
+                                      }
+                                    }}
+                                  />
+                                )}
+                                {type === 'single-select' && (
+                                  <select
+                                    className={`input ${hasError ? 'border-red-500' : ''}`}
+                                    value={customResponses[label] || ''}
+                                    onChange={(e) => {
+                                      setCustomResponses({ ...customResponses, [label]: e.target.value });
+                                      if (customErrors[label]) {
+                                        const newErrors = { ...customErrors };
+                                        delete newErrors[label];
+                                        setCustomErrors(newErrors);
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Select...</option>
+                                    {options.map((opt, oi) => (
+                                      <option key={oi} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                )}
+                                {type === 'multiple-select' && (
+                                  <div className={`space-y-2 p-3 border rounded-lg ${hasError ? 'border-red-500' : 'border-gray-300'}`}>
+                                    {options.map((opt, oi) => {
+                                      const curr = Array.isArray(customResponses[label]) ? customResponses[label] : [];
+                                      const checked = curr.includes(opt);
+                                      return (
+                                        <label key={oi} className="flex items-center gap-2 text-sm cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                              const prev = Array.isArray(customResponses[label]) ? customResponses[label] : [];
+                                              const next = e.target.checked ? [...prev, opt] : prev.filter(v => v !== opt);
+                                              setCustomResponses({ ...customResponses, [label]: next });
+                                              if (customErrors[label] && next.length > 0) {
+                                                setCustomErrors({ ...customErrors, [label]: undefined });
+                                              }
+                                            }}
+                                          />
+                                          {opt}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {type === 'file' && (
+                                  <div>
+                                    <input
+                                      type="file"
+                                      multiple={field.type === 'file'}
+                                      className={`input ${hasError ? 'border-red-500' : ''}`}
+                                      onChange={(e) => {
+                                        const files = Array.from(e.target.files || []);
+                                        setFileBuffers({ ...fileBuffers, [label]: files });
+                                        if (customErrors[label] && files.length > 0) {
+                                          setCustomErrors({ ...customErrors, [label]: undefined });
+                                        }
+                                      }}
+                                    />
+                                    {fileBuffers[label] && fileBuffers[label].length > 0 && (
+                                      <div className="mt-2 text-sm text-gray-600">
+                                        {fileBuffers[label].length} file(s) selected
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {customErrors[label] && (
+                                  <p className="text-red-600 text-xs mt-1">{customErrors[label]}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                          <button className="btn btn-secondary" type="button" onClick={resetCustomForm}>Cancel</button>
+                          <button
+                            className="btn btn-primary"
+                            type="button"
+                            onClick={async () => {
+                              // Validate ALL required fields
+                              const errs = {};
+                              const fields = event.customFields || [];
+                              
+                              for (const field of fields) {
+                                const label = field.label || `Field ${fields.indexOf(field) + 1}`;
+                                
+                                // Only validate required fields
+                                if (field.required) {
+                                  const val = customResponses[label];
+                                  const hasFile = (fileBuffers[label] && fileBuffers[label].length > 0);
+                                  
+                                  if (field.type === 'file') {
+                                    if (!hasFile) {
+                                      errs[label] = 'Please upload at least one file';
+                                    }
+                                  } else if (field.type === 'multiple-select') {
+                                    if (!Array.isArray(val) || val.length === 0) {
+                                      errs[label] = 'Please select at least one option';
+                                    }
+                                  } else if (field.type === 'single-select') {
+                                    if (!val || String(val).trim() === '') {
+                                      errs[label] = 'Please select an option';
+                                    }
+                                  } else {
+                                    // text or textarea
+                                    if (!val || String(val).trim() === '') {
+                                      errs[label] = 'This field is required';
+                                    }
+                                  }
+                                }
+                              }
+                              
+                              setCustomErrors(errs);
+                              if (Object.keys(errs).length > 0) {
+                                toast.error('Please fill in all required fields');
+                                // Scroll to first error
+                                const firstErrorField = document.querySelector('.border-red-500');
+                                if (firstErrorField) {
+                                  firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }
+                                return;
+                              }
+
+                              // Upload files (if any) via existing upload endpoint reuse
+                              const responses = { ...customResponses };
+                              const labels = Object.keys(fileBuffers);
+                              for (const label of labels) {
+                                const files = fileBuffers[label];
+                                if (files && files.length > 0) {
+                                  try {
+                                    const fd = new FormData();
+                                    files.forEach(f => fd.append('images', f));
+                                    const up = await api.post('/upload/event-images', fd);
+                                    const urls = up.data?.imageUrls || [];
+                                    responses[label] = urls;
+                                  } catch (e) {
+                                    toast.error('File upload failed');
+                                    return;
+                                  }
+                                }
+                              }
+
+                              buyTicketMutation.mutate({ eventId: id, quantity: 1, customResponses: responses });
+                            }}
+                          >
+                            Continue to Pay
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )
             ) : (
               <>

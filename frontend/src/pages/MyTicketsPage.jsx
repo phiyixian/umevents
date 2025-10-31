@@ -9,24 +9,25 @@ const MyTicketsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  const { data: ticketsData, isLoading } = useQuery('myTickets', async () => {
+  const { data: ticketsData, isLoading, refetch } = useQuery('myTickets', async () => {
     const response = await api.get('/tickets/my');
     return response.data;
   }, {
     refetchOnMount: true, // Refetch when navigating to this page to show new tickets
+    staleTime: 5000, // Consider data stale after 5 seconds to allow updates
   });
 
   // Check if user returned from successful payment
+  // Note: Toast is now shown only in PaymentSuccessPage to avoid duplicates
+  // But we still refetch to ensure latest ticket data is shown
   useEffect(() => {
     if (location.state?.paymentSuccess) {
-      toast.success(location.state.message || 'Payment successful! Your ticket has been purchased.', {
-        duration: 5000,
-        icon: '🎉'
-      });
-      // Clear the state so it doesn't show again on refresh
+      // Refetch tickets to get updated status (toast already shown in PaymentSuccessPage)
+      refetch();
+      // Clear the state so it doesn't trigger again
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state, navigate, location.pathname]);
+  }, [location.state, navigate, location.pathname, refetch]);
 
   const tickets = ticketsData?.tickets || [];
 

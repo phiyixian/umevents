@@ -36,7 +36,21 @@ const EventsPage = () => {
 
   const allEvents = eventsData?.events || [];
   const myEvents = myEventsData?.events || [];
-  const events = viewMode === 'all' ? allEvents : myEvents;
+  // Apply client-side filtering as a safety net (normalize case/whitespace)
+  const normalize = (s) => (s ?? '').toString().trim().toLowerCase();
+  const baseEvents = viewMode === 'all' ? allEvents : myEvents;
+  const events = baseEvents.filter((e) => {
+    const eventCat = normalize(e.category);
+    const selectedCat = normalize(category);
+    const catOk = !selectedCat || eventCat === selectedCat;
+
+    const q = normalize(search);
+    const inTitle = q === '' || (typeof e.title === 'string' && e.title.toLowerCase().includes(q));
+    const inDesc = q === '' || (typeof e.description === 'string' && e.description.toLowerCase().includes(q));
+    const searchOk = inTitle || inDesc;
+
+    return catOk && searchOk;
+  });
   const isLoadingData = viewMode === 'all' ? isLoading : isLoadingMyEvents;
 
   const categories = [
@@ -104,12 +118,12 @@ const EventsPage = () => {
           {events.map((event) => (
             <div key={event.id} className="card hover:shadow-lg transition-shadow">
               <Link to={`/events/${event.id}`}>
-                <div className="h-48 bg-gray-200 rounded-lg mb-4 overflow-hidden">
-                  {event.imageUrl ? (
+                <div className="h-48 bg-gray-200 rounded-lg mb-4 overflow-hidden flex items-center justify-center">
+                  {(event.imageUrl || (event.imageUrls && event.imageUrls.length > 0)) ? (
                     <img 
-                      src={event.imageUrl} 
+                      src={event.imageUrl || event.imageUrls[0]} 
                       alt={event.title}
-                      className="w-full h-full object-cover"
+                      className="max-h-full max-w-full object-contain"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-400">

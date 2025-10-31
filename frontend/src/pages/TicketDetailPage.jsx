@@ -35,26 +35,54 @@ const TicketDetailPage = () => {
     );
   }
 
-  // Safe date formatter (handles Firestore Timestamp/ISO/Date)
+  // Safe date formatter (events should always have dates, backend now returns ISO strings)
   const formatDate = (dateInput) => {
-    if (!dateInput) return 'Date TBD';
+    if (!dateInput) {
+      console.error('Missing date input:', dateInput);
+      return 'Date not available';
+    }
+                                               
     try {
       let date;
-      if (typeof dateInput === 'object' && dateInput?.seconds) {
-        date = new Date(dateInput.seconds * 1000);
-      } else if (dateInput && typeof dateInput.toDate === 'function') {
-        date = dateInput.toDate();
-      } else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+      
+      // Handle ISO string (most common after backend conversion)
+      if (typeof dateInput === 'string') {
         date = new Date(dateInput);
-      } else if (dateInput instanceof Date) {
-        date = dateInput;
-      } else {
-        return 'Date TBD';
       }
-      if (!(date instanceof Date) || isNaN(date.getTime())) return 'Date TBD';
+      // Handle Firestore Timestamp object with seconds
+      else if (typeof dateInput === 'object' && dateInput?.seconds) {
+        date = new Date(dateInput.seconds * 1000);
+      }
+      // Handle timestamp number
+      else if (typeof dateInput === 'number') {
+        date = new Date(dateInput);
+      }
+      // Handle Date objects
+      else if (dateInput instanceof Date) {
+        date = dateInput;
+      }
+      // Handle Firestore Timestamp with toDate method
+      else if (dateInput && typeof dateInput.toDate === 'function') {
+        date = dateInput.toDate();
+      }
+      // Handle _seconds format from Firestore
+      else if (dateInput._seconds) {
+        date = new Date(dateInput._seconds * 1000);
+      }
+      else {
+        console.error('Unknown date format:', dateInput);
+        return 'Invalid date format';
+      }
+      
+      if (!(date instanceof Date) || isNaN(date.getTime())) {
+        console.error('Invalid date value:', dateInput);
+        return 'Invalid date';
+      }
+      
       return format(date, 'PPP p');
     } catch (e) {
-      return 'Date TBD';
+      console.error('Date formatting error:', e, 'Input:', dateInput);
+      return 'Date formatting error';
     }
   };
 
@@ -121,6 +149,32 @@ const TicketDetailPage = () => {
                    ticket.status.replace('_', ' ')}
                 </span>
               </div>
+
+              {/* WhatsApp Group Link */}
+              {event?.whatsappGroupLink ? (
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-lg font-semibold mb-2">Join WhatsApp Group</h3>
+                  <p className="text-sm text-gray-600 mb-3">After securing your ticket, please join the event WhatsApp group for updates.</p>
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={event.whatsappGroupLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-primary"
+                      onClick={async () => {
+                        try {
+                          await api.post(`/tickets/${ticket.id}/whatsapp/joined`);
+                        } catch (e) {}
+                      }}
+                    >
+                      {ticket.whatsappJoined ? 'Joined ✓' : 'Join WhatsApp Group'}
+                    </a>
+                    {ticket.whatsappJoined && (
+                      <span className="text-green-600 text-sm">Thanks for joining!</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Payment/Transaction Information */}
               {ticket.payment && (

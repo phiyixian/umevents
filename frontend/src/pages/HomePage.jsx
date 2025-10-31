@@ -76,9 +76,9 @@ const HomePage = () => {
                   className="card hover:shadow-lg transition-shadow"
                 >
                   <div className="h-48 bg-gray-200 rounded-lg mb-4 overflow-hidden">
-                    {event.imageUrl ? (
+                    {(event.imageUrl || (event.imageUrls && event.imageUrls.length > 0)) ? (
                       <img 
-                        src={event.imageUrl} 
+                        src={event.imageUrl || event.imageUrls[0]} 
                         alt={event.title}
                         className="w-full h-full object-cover"
                       />

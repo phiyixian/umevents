@@ -60,9 +60,15 @@ const ProtectedRoute = ({ children, requiredRole, excludeRole }) => {
     return <Navigate to="/" replace />;
   }
 
-  // Check if route excludes specific role
-  if (excludeRole && userRole === excludeRole) {
-    return <Navigate to="/" replace />;
+  // Check if route excludes specific role(s)
+  if (excludeRole) {
+    if (Array.isArray(excludeRole)) {
+      if (excludeRole.includes(userRole)) {
+        return <Navigate to="/" replace />;
+      }
+    } else if (userRole === excludeRole) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return children;
@@ -128,7 +134,7 @@ function AppRoutes() {
         <Route 
           path="transactions" 
           element={
-            <ProtectedRoute excludeRole="admin">
+            <ProtectedRoute excludeRole={['admin', 'club']}>
               <TransactionHistoryPage />
             </ProtectedRoute>
           } 

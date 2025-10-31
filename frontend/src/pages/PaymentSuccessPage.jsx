@@ -11,6 +11,7 @@ const PaymentSuccessPage = () => {
   const [status, setStatus] = useState('processing');
   const [eventId, setEventId] = useState(null);
   const verificationAttemptsRef = useRef(0);
+  const toastShownRef = useRef(false); // Track if success toast has already been shown
   
   // Get parameters from URL
   // ToyyibPay returns: status_id, billcode, order_id, msg, transaction_id
@@ -49,13 +50,21 @@ const PaymentSuccessPage = () => {
         queryClient.invalidateQueries(['events']);
         queryClient.invalidateQueries(['myTickets']); // Refresh tickets list
         
-        toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+        // Only show toast if not already shown
+        if (!toastShownRef.current) {
+          toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+          toastShownRef.current = true;
+        }
       } else if (paymentStatus === 'pending') {
         // If URL shows success but backend is still pending, trust URL and show success
         // Callback may still be processing
         if (statusId === '1') {
           setStatus('success');
-          toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+          // Only show toast if not already shown
+          if (!toastShownRef.current) {
+            toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+            toastShownRef.current = true;
+          }
           
           // Invalidate queries anyway
           const paymentEventId = paymentData?.eventId || eventIdParam;
@@ -82,11 +91,19 @@ const PaymentSuccessPage = () => {
       // The callback will be processed eventually
       if (statusId === '1') {
         setStatus('success');
-        toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+        // Only show toast if not already shown
+        if (!toastShownRef.current) {
+          toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+          toastShownRef.current = true;
+        }
       } else if (billcode) {
         // If we have billcode, assume success (fallback will redirect)
         setStatus('success');
-        toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+        // Only show toast if not already shown
+        if (!toastShownRef.current) {
+          toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+          toastShownRef.current = true;
+        }
       } else {
         // No indicators, stay in processing (fallback will redirect)
         setStatus('processing');
@@ -101,11 +118,15 @@ const PaymentSuccessPage = () => {
     // The backend callback will process eventually
     if (statusId === '1') {
       setStatus('success');
-      toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+      // Only show toast once
+      if (!toastShownRef.current) {
+        toast.success('Payment successful! Your ticket has been purchased.', { duration: 5000 });
+        toastShownRef.current = true;
+      }
       
       // Still verify in background, but don't wait for it
       if (orderId) {
-        verifyPaymentStatus(); // Verify in background to invalidate queries
+        verifyPaymentStatus(); // Verify in background to invalidate queries (won't show toast again)
       }
       
       // Set a fallback timeout to redirect even if verification takes too long
@@ -129,7 +150,11 @@ const PaymentSuccessPage = () => {
       // No orderId and no status_id - can't verify, assume success if billcode exists
       if (billcode) {
         setStatus('success');
-        toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+        // Only show toast once
+        if (!toastShownRef.current) {
+          toast.success('Payment appears successful. Please check your tickets.', { duration: 5000 });
+          toastShownRef.current = true;
+        }
       } else {
         setStatus('processing');
       }
@@ -140,21 +165,22 @@ const PaymentSuccessPage = () => {
     // Redirect to My Tickets after successful payment, or events on failure
     if (status === 'success') {
       const timer = setTimeout(() => {
-        // Ensure queries are invalidated before redirect
+        // Ensure queries are invalidated and refetched before redirect
         if (eventId) {
-          queryClient.invalidateQueries(['event', eventId]);
+          queryClient.invalidateQueries(['event', eventId], { refetchActive: true });
         }
-        queryClient.invalidateQueries(['events']);
-        queryClient.invalidateQueries(['myTickets']);
+        queryClient.invalidateQueries(['events'], { refetchActive: true });
+        queryClient.invalidateQueries(['myTickets'], { refetchActive: true });
         
+        // Add a small delay to ensure backend has processed the callback
         navigate('/my-tickets', { 
           replace: true,
           state: { 
-            paymentSuccess: true,
-            message: 'Payment successful! Your ticket has been purchased.'
+            // Don't pass paymentSuccess to avoid duplicate toast in MyTicketsPage
+            // Toast already shown in PaymentSuccessPage
           }
         });
-      }, 1500); // Short delay to show success message
+      }, 1500); // Short delay to ensure backend processing + show success message
 
       return () => clearTimeout(timer);
     } else if (status === 'failed') {
@@ -189,8 +215,7 @@ const PaymentSuccessPage = () => {
           navigate('/my-tickets', { 
             replace: true,
             state: { 
-              paymentSuccess: true,
-              message: 'Payment processing. Please check your tickets.'
+              // Don't pass paymentSuccess to avoid duplicate toast
             }
           });
         } else {
