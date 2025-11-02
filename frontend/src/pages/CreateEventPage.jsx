@@ -1,14 +1,74 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseApp from '../config/firebase';
-import { useNavigate } from 'react-router-dom';
-import { useMutation } from 'react-query';
+import { useNavigate, Link } from 'react-router-dom';
+import { useMutation, useQuery } from 'react-query';
 import api from '../config/axios';
 import toast from 'react-hot-toast';
 import { useUserStore } from '../store/userStore';
+import { useAuth } from '../contexts/AuthContext';
 
 const CreateEventPage = () => {
+  const { user } = useAuth();
   const { verificationStatus } = useUserStore();
+  
+  const { toyyibpayEnabled, toyyibpayApplicationStatus, categoryCode, qrCodeImageUrl } = useUserStore();
+
+  // Fetch payment settings to check if payment method is set up
+  const { data: paymentSettingsData, refetch: refetchPaymentSettings } = useQuery(
+    ['paymentSettings'],
+    async () => {
+      const response = await api.get('/auth/profile');
+      return response.data;
+    },
+    {
+      enabled: !!user,
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      onSuccess: (data) => {
+        if (data.user) {
+          // Update userStore with payment settings
+          const { setUserStore } = useUserStore.getState();
+          setUserStore({
+            toyyibpayEnabled: data.user.toyyibpayEnabled || false,
+            toyyibpayApplicationStatus: data.user.toyyibpayApplicationStatus || null,
+            categoryCode: data.user.categoryCode || null,
+            qrCodeImageUrl: data.user.qrCodeImageUrl || null,
+            paymentMethod: data.user.paymentMethod || null
+          });
+        }
+      }
+    }
+  );
+
+  // Refetch payment settings when component becomes visible (user returns from profile page)
+  useEffect(() => {
+    if (user) {
+      refetchPaymentSettings();
+    }
+  }, [user, refetchPaymentSettings]);
+
+  // Check if payment method is set up - use both store and query data
+  const hasPaymentMethod = () => {
+    // Get payment method preference from user data
+    const userPaymentMethod = paymentSettingsData?.user?.paymentMethod || 
+                             useUserStore.getState().paymentMethod;
+    
+    // Check ToyyibPay approval
+    const toyyibpayApproved = toyyibpayEnabled || 
+                              toyyibpayApplicationStatus === 'approved' || 
+                              !!categoryCode ||
+                              paymentSettingsData?.user?.toyyibpayEnabled ||
+                              paymentSettingsData?.user?.toyyibpayApplicationStatus === 'approved' ||
+                              !!paymentSettingsData?.user?.categoryCode;
+    
+    // Check manual QR code - must have both paymentMethod='manual' AND qrCodeImageUrl
+    const manualQRUrl = qrCodeImageUrl || paymentSettingsData?.user?.qrCodeImageUrl;
+    const hasManualQRUrl = manualQRUrl && manualQRUrl.trim() !== '';
+    const manualQRConfigured = (userPaymentMethod === 'manual' || userPaymentMethod === 'manual_qr') && hasManualQRUrl;
+    
+    return toyyibpayApproved || manualQRConfigured;
+  };
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -200,9 +260,39 @@ const CreateEventPage = () => {
     );
   }
 
+  // Check payment method setup
+  const paymentMethodSetUp = hasPaymentMethod();
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
       <h1 className="text-3xl font-bold mb-8">Create New Event</h1>
+
+      {/* Payment Setup Reminder */}
+      {!paymentMethodSetUp && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-6">
+          <div className="flex items-start">
+            <svg className="w-6 h-6 text-orange-400 mr-3 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h2 className="text-xl font-bold text-orange-800 mb-2">Payment Method Required</h2>
+              <p className="text-orange-700 mb-3">
+                To create events with paid tickets, you need to set up a payment method first. You can either:
+              </p>
+              <ul className="list-disc list-inside text-orange-700 mb-3 space-y-1">
+                <li>Upload a QR code image for manual payment</li>
+                <li>Apply for and get approved for ToyyibPay integration</li>
+              </ul>
+              <Link 
+                to="/profile" 
+                className="inline-block text-sm font-semibold text-orange-800 hover:text-orange-900 underline"
+              >
+                Go to Profile to Set Up Payment →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>

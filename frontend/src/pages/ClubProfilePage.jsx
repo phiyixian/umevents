@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserStore } from '../store/userStore';
 import api from '../config/axios';
-import { useQuery, useMutation } from 'react-query';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import toast from 'react-hot-toast';
 
 const ClubProfilePage = () => {
@@ -62,13 +62,36 @@ const ClubProfilePage = () => {
     }
   );
 
+  const { setUserStore } = useUserStore();
+  const queryClient = useQueryClient();
+
   const updateProfileMutation = useMutation(
     async (data) => {
       const response = await api.put('/auth/profile', data);
       return response.data;
     },
     {
-      onSuccess: () => {
+      onSuccess: async () => {
+        // Refetch profile from backend to get all updated fields
+        try {
+          const response = await api.get('/auth/profile');
+          if (response.data?.user) {
+            // Update userStore with complete profile data from backend
+            setUserStore({
+              uid: response.data.user.uid || useUserStore.getState().uid,
+              email: response.data.user.email || useUserStore.getState().email,
+              role: response.data.user.role || useUserStore.getState().role,
+              ...response.data.user
+            });
+          }
+        } catch (error) {
+          console.error('Error refetching profile:', error);
+        }
+        
+        // Invalidate profile query cache
+        queryClient.invalidateQueries(['profile']);
+        queryClient.invalidateQueries(['paymentSettings']);
+        
         toast.success('Profile updated successfully!');
       },
       onError: (error) => {
@@ -84,7 +107,27 @@ const ClubProfilePage = () => {
       return response.data;
     },
     {
-      onSuccess: () => {
+      onSuccess: async () => {
+        // Refetch profile to get updated logoUrl and payment settings
+        try {
+          const response = await api.get('/auth/profile');
+          if (response.data?.user) {
+            // Update userStore with complete profile data from backend
+            setUserStore({
+              uid: response.data.user.uid || useUserStore.getState().uid,
+              email: response.data.user.email || useUserStore.getState().email,
+              role: response.data.user.role || useUserStore.getState().role,
+              ...response.data.user
+            });
+          }
+        } catch (error) {
+          console.error('Error refetching profile:', error);
+        }
+        
+        // Invalidate profile query cache
+        queryClient.invalidateQueries(['profile']);
+        queryClient.invalidateQueries(['paymentSettings']);
+        
         toast.success('Payment settings updated successfully!');
       },
       onError: (error) => {
@@ -109,21 +152,24 @@ const ClubProfilePage = () => {
   };
 
   const handleQRCodeImageChange = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const file = e.target.files[0];
     if (file) {
+      console.log('QR code file selected:', file.name, file.size, 'bytes');
       setQrCodeImage(file);
-      // Create preview URL
+      // Create preview URL for display
       const url = URL.createObjectURL(file);
       setQrCodePreview(url);
-      setPaymentSettings({
-        ...paymentSettings,
-        qrCodeImageUrl: url // Use preview URL for now
-      });
+      // Don't submit form - just store the file for later upload
+    } else {
+      setQrCodeImage(null);
+      setQrCodePreview('');
     }
   };
 
   const removeQRCodeImage = () => {
-    if (qrCodePreview) {
+    if (qrCodePreview && qrCodePreview.startsWith('blob:')) {
       URL.revokeObjectURL(qrCodePreview);
     }
     setQrCodeImage(null);
@@ -182,9 +228,64 @@ const ClubProfilePage = () => {
     }
   };
 
-  const handlePaymentSubmit = (e) => {
+  const handlePaymentSubmit = async (e) => {
     e.preventDefault();
-    updatePaymentMutation.mutate(paymentSettings);
+    
+    // Validate: if manual payment selected, QR code must be uploaded or already exist
+    if (paymentSettings.paymentMethod === 'manual') {
+      const hasQRCode = qrCodeImage || paymentSettings.qrCodeImageUrl;
+      if (!hasQRCode) {
+        toast.error('Please upload a QR code image for manual payment method');
+        return;
+      }
+    }
+    
+    try {
+      let qrCodeUrl = paymentSettings.qrCodeImageUrl; // Keep existing QR code URL
+      
+      // Upload QR code file if one was selected
+      if (qrCodeImage) {
+        const formDataUpload = new FormData();
+        formDataUpload.append('image', qrCodeImage);
+        
+        try {
+          console.log('Uploading QR code...', qrCodeImage.name);
+          console.log('API base URL:', api.defaults.baseURL);
+          console.log('Full URL will be:', `${api.defaults.baseURL}/upload/qr-code`);
+          const uploadResponse = await api.post('/upload/qr-code', formDataUpload);
+          console.log('Upload response:', uploadResponse.data);
+          
+          if (!uploadResponse.data?.imageUrl) {
+            throw new Error('No image URL returned from server');
+          }
+          
+          qrCodeUrl = uploadResponse.data.imageUrl;
+          
+          // Update preview with the new URL
+          if (qrCodePreview && qrCodePreview.startsWith('blob:')) {
+            URL.revokeObjectURL(qrCodePreview);
+          }
+          setQrCodePreview(qrCodeUrl);
+          setQrCodeImage(null); // Clear file after successful upload
+          
+          toast.success('QR code uploaded successfully!');
+        } catch (uploadError) {
+          console.error('Error uploading QR code:', uploadError);
+          const errorMsg = uploadError.response?.data?.error || uploadError.message || 'Failed to upload QR code image';
+          toast.error(`Failed to upload QR code: ${errorMsg}`);
+          return; // Don't proceed if upload fails
+        }
+      }
+      
+      // Submit payment settings with the uploaded QR code URL
+      updatePaymentMutation.mutate({
+        ...paymentSettings,
+        qrCodeImageUrl: qrCodeUrl
+      });
+    } catch (error) {
+      console.error('Error in payment submit:', error);
+      toast.error('Failed to update payment settings');
+    }
   };
 
   return (
@@ -414,25 +515,35 @@ const ClubProfilePage = () => {
               {paymentSettings.paymentMethod === 'manual' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    QR Code Image
+                    QR Code Image *
                   </label>
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleQRCodeImageChange}
                     className="input"
+                    key={`qr-input-${qrCodeImage ? 'has-file' : 'no-file'}`}
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Upload your QR code image file
-                  </p>
+                  {qrCodeImage && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ File selected: {qrCodeImage.name} ({(qrCodeImage.size / 1024).toFixed(2)} KB)
+                    </p>
+                  )}
+                  {!qrCodeImage && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload your QR code image file. This QR code will be displayed to students when they purchase tickets for your paid events.
+                    </p>
+                  )}
 
-                  {/* QR Code Preview */}
-                  {qrCodePreview && (
+                  {/* QR Code Preview for newly selected file */}
+                  {qrCodeImage && qrCodePreview && (
                     <div className="mt-4 relative inline-block">
+                      <p className="text-sm text-gray-600 mb-2">New QR Code Preview:</p>
                       <img 
                         src={qrCodePreview} 
                         alt="QR Code Preview"
-                        className="w-48 h-48 object-cover rounded-lg border border-gray-300"
+                        className="w-48 h-48 object-contain rounded-lg border border-gray-300"
                       />
                       <button
                         type="button"
@@ -444,24 +555,22 @@ const ClubProfilePage = () => {
                     </div>
                   )}
 
-                  {/* Or use URL input as alternative */}
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Or enter QR Code Image URL
-                    </label>
-                    <input
-                      type="text"
-                      name="qrCodeImageUrl"
-                      className="input"
-                      placeholder="https://example.com/qrcode.png"
-                      value={!qrCodeImage ? paymentSettings.qrCodeImageUrl : ''}
-                      onChange={handlePaymentChange}
-                      disabled={!!qrCodeImage}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      {qrCodeImage ? 'Remove uploaded image to use URL' : 'Paste QR code image URL here'}
-                    </p>
-                  </div>
+                  {/* Show existing QR code if available and no new file selected */}
+                  {paymentSettings.qrCodeImageUrl && !qrCodeImage && (
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-600 mb-2">Current QR Code:</p>
+                      <div className="relative inline-block">
+                        <img 
+                          src={paymentSettings.qrCodeImageUrl} 
+                          alt="Current QR Code"
+                          className="w-48 h-48 object-contain rounded-lg border border-gray-300"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Upload a new file to replace the current QR code
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

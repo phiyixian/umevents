@@ -318,18 +318,29 @@ export const getEventParticipants = async (req, res, next) => {
     const participants = [];
     for (const ticketDoc of ticketsSnapshot.docs) {
       const ticketData = ticketDoc.data();
-      const userDoc = await db.collection('users').doc(ticketData.userId).get();
-      const userData = userDoc.data();
+      // Prefer student profile stored in ticket, fallback to user doc
+      const studentProfile = ticketData.studentProfile || {};
+      
+      // If ticket doesn't have studentProfile, fetch from user doc (for older tickets)
+      let userData = {};
+      if (!ticketData.studentProfile || !ticketData.studentProfile.name) {
+        const userDoc = await db.collection('users').doc(ticketData.userId).get();
+        userData = userDoc.exists ? userDoc.data() : {};
+      }
 
       participants.push({
         ticketId: ticketDoc.id,
         purchaseDate: ticketData.purchaseDate,
         status: ticketData.status,
-        studentName: userData.name || 'Unknown',
-        studentId: userData.studentId || 'N/A',
-        faculty: userData.faculty || 'N/A',
-        email: userData.email || 'N/A',
-        phoneNumber: userData.phoneNumber || 'N/A'
+        studentName: studentProfile.name || userData.name || 'Unknown',
+        studentId: studentProfile.studentId || userData.studentId || 'N/A',
+        faculty: studentProfile.faculty || userData.faculty || 'N/A',
+        email: studentProfile.email || userData.email || 'N/A',
+        phoneNumber: studentProfile.phoneNumber || userData.phoneNumber || 'N/A',
+        major: studentProfile.major || userData.major || 'N/A',
+        degree: studentProfile.degree || userData.degree || 'N/A',
+        currentSemester: studentProfile.currentSemester || userData.currentSemester || 'N/A',
+        dietaryRequirement: studentProfile.dietaryRequirement || userData.dietaryRequirement || 'N/A'
       });
     }
 

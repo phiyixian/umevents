@@ -26,7 +26,7 @@ router.post('/toyyibpay/callback', handleToyyibPayCallback);
 
 // Club/Organizer routes
 router.get('/finance', authenticate, getOrganizerFinance);
-router.put('/settings', authenticate, updateClubPaymentSettings);
+router.put('/settings', authenticate, authorize('club'), updateClubPaymentSettings);
 
 // ToyyibPay application flow
 router.post('/toyyibpay/apply', authenticate, applyToyyibPayForClub);

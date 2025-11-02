@@ -193,17 +193,22 @@ export const getAllPublicClubs = async (req, res, next) => {
 
 export const updateUserProfile = async (req, res, next) => {
   try {
-    const { name, faculty, phoneNumber, bio, clubName, clubDescription, contactPerson, logoUrl } = req.body;
+    const { name, studentId, faculty, phoneNumber, bio, clubName, clubDescription, contactPerson, logoUrl, major, degree, currentSemester, dietaryRequirement } = req.body;
     
     const updates = {
       updatedAt: new Date()
     };
 
     // Student fields
-    if (name) updates.name = name;
-    if (faculty) updates.faculty = faculty;
-    if (phoneNumber) updates.phoneNumber = phoneNumber;
+    if (name !== undefined) updates.name = name;
+    if (studentId !== undefined) updates.studentId = studentId; // Allow empty string to clear
+    if (faculty !== undefined) updates.faculty = faculty;
+    if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (bio) updates.bio = bio;
+    if (major !== undefined) updates.major = major;
+    if (degree !== undefined) updates.degree = degree;
+    if (currentSemester !== undefined) updates.currentSemester = currentSemester;
+    if (dietaryRequirement !== undefined) updates.dietaryRequirement = dietaryRequirement;
 
     // Club fields
     if (clubName) updates.clubName = clubName;

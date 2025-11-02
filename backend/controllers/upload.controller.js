@@ -166,6 +166,70 @@ export const uploadEventImages = async (req, res, next) => {
   }
 };
 
+// Upload QR code for manual payment (single file)
+export const uploadQRCode = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    const userId = req.user.uid;
+    
+    // Get bucket - prefer explicit bucket name, but fallback to default from app
+    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || undefined;
+    let bucket;
+    try {
+      if (bucketName) {
+        bucket = storage.bucket(bucketName);
+        console.log(`Uploading QR code to explicit bucket: ${bucketName}`);
+      } else {
+        bucket = storage.bucket();
+        console.log(`Uploading QR code to default bucket: ${bucket.name}`);
+      }
+    } catch (bucketError) {
+      console.error('Error getting storage bucket:', bucketError);
+      return res.status(500).json({ 
+        error: 'Storage bucket not available',
+        details: bucketError.message 
+      });
+    }
+    
+    if (!bucket) {
+      return res.status(500).json({ error: 'Storage bucket not configured' });
+    }
+    
+    console.log(`Uploading QR code to bucket: ${bucket.name}`);
+    const fileName = `qr_codes/${userId}_${Date.now()}_${req.file.originalname}`;
+    const file = bucket.file(fileName);
+
+    // Upload file first
+    await file.save(req.file.buffer, {
+      metadata: {
+        contentType: req.file.mimetype,
+        metadata: {
+          uploadedBy: userId,
+          uploadedAt: new Date().toISOString()
+        }
+      }
+    });
+
+    // Make file publicly accessible after upload
+    await file.makePublic();
+
+    // Get public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    res.status(200).json({
+      message: 'QR code uploaded successfully',
+      imageUrl: publicUrl,
+      fileName
+    });
+  } catch (error) {
+    console.error('QR code upload error:', error);
+    next(error);
+  }
+};
+
 // Delete image from Firebase Storage
 export const deleteImage = async (req, res, next) => {
   try {
@@ -277,6 +341,7 @@ export const deleteImage = async (req, res, next) => {
 export default {
   uploadClubLogo,
   uploadEventImages,
+  uploadQRCode,
   uploadSingle,
   deleteImage
 };

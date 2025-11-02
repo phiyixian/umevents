@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadClubLogo, uploadEventImages, uploadSingle, deleteImage } from '../controllers/upload.controller.js';
+import { uploadClubLogo, uploadEventImages, uploadQRCode, uploadSingle, deleteImage } from '../controllers/upload.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import multer from 'multer';
@@ -43,6 +43,9 @@ router.post('/club-logo', authorize('club'), uploadSingle, handleMulterError, up
 
 // Upload event images (multiple files)
 router.post('/event-images', authorize('club'), uploadMultiple, handleMulterError, uploadEventImages);
+
+// Upload QR code for manual payment (single file)
+router.post('/qr-code', authorize('club'), uploadSingle, handleMulterError, uploadQRCode);
 
 // Delete image from Firebase Storage
 router.delete('/image', authorize('club'), deleteImage);

@@ -97,12 +97,68 @@ export const createEvent = async (req, res, next) => {
       paymentInstructions = '' // Instructions for manual payment
     } = req.body;
 
+    // Helper function to parse datetime-local string (YYYY-MM-DDTHH:mm) 
+    // and create a Date object that preserves the exact time selected
+    // The datetime-local input provides time without timezone info, so we treat it
+    // as the intended local time and create a Date object that will display the same way
+    const parseDateTimeLocal = (dateTimeString) => {
+      if (!dateTimeString) return null;
+      
+      // Parse "YYYY-MM-DDTHH:mm" format (datetime-local input)
+      const parts = dateTimeString.split('T');
+      if (parts.length !== 2) {
+        // Fallback to standard Date parsing
+        return new Date(dateTimeString);
+      }
+      
+      const [datePart, timePart] = parts;
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      
+      // Create Date object treating the input as local time
+      // This ensures the time displayed matches what was selected
+      // The Date object internally stores as UTC, but when converted back to local
+      // time for display, it will show the same hour/minute the user selected
+      const date = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      
+      // Verify the created date matches what was input (in local time components)
+      // This ensures no unexpected timezone shifts occurred
+      if (date.getFullYear() !== year || 
+          date.getMonth() !== month - 1 || 
+          date.getDate() !== day ||
+          date.getHours() !== hours || 
+          date.getMinutes() !== minutes) {
+        // If mismatch, log warning but proceed (shouldn't happen in normal cases)
+        console.warn('Date parsing mismatch:', { input: dateTimeString, parsed: date });
+      }
+      
+      return date;
+    };
+
+    // If payment method is manual and no QR code provided, use club's profile QR code
+    let finalOrganizerQRCode = organizerQRCode;
+    if (paymentMethod === 'manual' || paymentMethod === 'manual_qr') {
+      if (!finalOrganizerQRCode && userData.qrCodeImageUrl) {
+        finalOrganizerQRCode = userData.qrCodeImageUrl;
+      }
+      // If still no QR code and manual payment selected, use club's payment method from profile
+      if (!finalOrganizerQRCode && userData.paymentMethod === 'manual' && userData.qrCodeImageUrl) {
+        finalOrganizerQRCode = userData.qrCodeImageUrl;
+      }
+    }
+    
+    // If payment method not specified, use club's default payment method from profile
+    let finalPaymentMethod = paymentMethod;
+    if (!finalPaymentMethod) {
+      finalPaymentMethod = userData.paymentMethod || 'toyyibpay';
+    }
+
     const eventData = {
       title,
       description,
       category,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: parseDateTimeLocal(startDate),
+      endDate: parseDateTimeLocal(endDate),
       location,
       venue,
       ticketPrice: parseFloat(ticketPrice),
@@ -127,8 +183,8 @@ export const createEvent = async (req, res, next) => {
         average: 0,
         count: 0
       },
-      paymentMethod,
-      organizerQRCode,
+      paymentMethod: finalPaymentMethod,
+      organizerQRCode: finalOrganizerQRCode || '',
       paymentInstructions
     };
 
@@ -240,11 +296,61 @@ export const updateEvent = async (req, res, next) => {
 
     const updates = { updatedAt: new Date() };
 
+    // Helper function to parse datetime-local string (YYYY-MM-DDTHH:mm) 
+    // and create a Date object that preserves the exact time selected
+    const parseDateTimeLocal = (dateTimeString) => {
+      if (!dateTimeString) return null;
+      
+      // Parse "YYYY-MM-DDTHH:mm" format (datetime-local input)
+      const parts = dateTimeString.split('T');
+      if (parts.length !== 2) {
+        // Fallback to standard Date parsing
+        return new Date(dateTimeString);
+      }
+      
+      const [datePart, timePart] = parts;
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      
+      // Create Date object treating the input as local time
+      // This ensures the time displayed matches what was selected
+      const date = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      
+      // Verify the created date matches what was input (in local time components)
+      if (date.getFullYear() !== year || 
+          date.getMonth() !== month - 1 || 
+          date.getDate() !== day ||
+          date.getHours() !== hours || 
+          date.getMinutes() !== minutes) {
+        console.warn('Date parsing mismatch:', { input: dateTimeString, parsed: date });
+      }
+      
+      return date;
+    };
+
+    // Get organizer data to use their QR code if needed
+    const organizerDoc = await db.collection('users').doc(req.user.uid).get();
+    const organizerData = organizerDoc.exists ? organizerDoc.data() : {};
+
+    // If payment method is manual and no QR code provided, use club's profile QR code
+    let finalOrganizerQRCode = organizerQRCode;
+    if (paymentMethod === 'manual' || paymentMethod === 'manual_qr') {
+      if (!finalOrganizerQRCode && organizerData.qrCodeImageUrl) {
+        finalOrganizerQRCode = organizerData.qrCodeImageUrl;
+      }
+    }
+    
+    // If payment method not specified, use club's default payment method from profile
+    let finalPaymentMethod = paymentMethod;
+    if (!finalPaymentMethod) {
+      finalPaymentMethod = organizerData.paymentMethod || eventData.paymentMethod || 'toyyibpay';
+    }
+
     if (typeof title === 'string') updates.title = title;
     if (typeof description === 'string') updates.description = description;
     if (typeof category === 'string') updates.category = category;
-    if (startDate) updates.startDate = new Date(startDate);
-    if (endDate) updates.endDate = new Date(endDate);
+    if (startDate) updates.startDate = parseDateTimeLocal(startDate);
+    if (endDate) updates.endDate = parseDateTimeLocal(endDate);
     if (typeof location === 'string') updates.location = location;
     if (typeof venue === 'string') updates.venue = venue;
     if (ticketPrice !== undefined) updates.ticketPrice = parseFloat(ticketPrice);
@@ -264,8 +370,8 @@ export const updateEvent = async (req, res, next) => {
     if (typeof socialMediaPostUrl === 'string') updates.socialMediaPostUrl = socialMediaPostUrl;
     if (typeof whatsappGroupLink === 'string') updates.whatsappGroupLink = whatsappGroupLink;
     if (Array.isArray(customFields)) updates.customFields = customFields;
-    if (typeof paymentMethod === 'string') updates.paymentMethod = paymentMethod;
-    if (typeof organizerQRCode === 'string') updates.organizerQRCode = organizerQRCode;
+    if (typeof finalPaymentMethod === 'string') updates.paymentMethod = finalPaymentMethod;
+    if (typeof finalOrganizerQRCode === 'string') updates.organizerQRCode = finalOrganizerQRCode;
     if (typeof paymentInstructions === 'string') updates.paymentInstructions = paymentInstructions;
 
     await db.collection('events').doc(id).update(updates);

@@ -41,6 +41,10 @@ export const purchaseTicket = async (req, res, next) => {
       return res.status(400).json({ error: 'You have already purchased tickets for this event' });
     }
 
+    // Fetch student profile details to include in ticket
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+
     // Create ticket records
     const tickets = [];
     for (let i = 0; i < quantity; i++) {
@@ -55,7 +59,19 @@ export const purchaseTicket = async (req, res, next) => {
         checkedIn: false,
         checkedInAt: null,
         customResponses: customResponses || {},
-        whatsappJoined: false
+        whatsappJoined: false,
+        // Include student profile details for organizer access
+        studentProfile: {
+          name: userData.name || '',
+          email: userData.email || '',
+          studentId: userData.studentId || '',
+          faculty: userData.faculty || '',
+          phoneNumber: userData.phoneNumber || '',
+          major: userData.major || '',
+          degree: userData.degree || '',
+          currentSemester: userData.currentSemester || '',
+          dietaryRequirement: userData.dietaryRequirement || ''
+        }
       };
 
       const ticketRef = await db.collection('tickets').add(ticketData);

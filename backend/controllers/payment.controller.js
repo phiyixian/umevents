@@ -62,6 +62,10 @@ export const initiateTicketPayment = async (req, res, next) => {
 
     // Helper function to create tickets
     const createTicketsHelper = async (status = 'pending_payment') => {
+      // Fetch student profile details to include in ticket
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.exists ? userDoc.data() : {};
+      
       const tickets = [];
       for (let i = 0; i < quantity; i++) {
         const ticketData = {
@@ -75,7 +79,19 @@ export const initiateTicketPayment = async (req, res, next) => {
           checkedIn: false,
           checkedInAt: null,
           customResponses: customResponses || {},
-          whatsappJoined: false
+          whatsappJoined: false,
+          // Include student profile details for organizer access
+          studentProfile: {
+            name: userData.name || '',
+            email: userData.email || '',
+            studentId: userData.studentId || '',
+            faculty: userData.faculty || '',
+            phoneNumber: userData.phoneNumber || '',
+            major: userData.major || '',
+            degree: userData.degree || '',
+            currentSemester: userData.currentSemester || '',
+            dietaryRequirement: userData.dietaryRequirement || ''
+          }
         };
 
         const ticketRef = await db.collection('tickets').add(ticketData);
@@ -145,11 +161,98 @@ export const initiateTicketPayment = async (req, res, next) => {
 
     const organizerData = organizerDoc.data();
 
-    // Check if organizer has ToyyibPay configured (for paid events)
+    // Check if organizer has payment methods configured
+    const organizerHasManualQR = !!(organizerData.qrCodeImageUrl && organizerData.qrCodeImageUrl.trim() !== '');
+    const organizerHasToyyibPay = !!organizerData.categoryCode;
+    const organizerPaymentMethod = organizerData.paymentMethod || 'toyyibpay';
+    
+    // Check if organizer has manual QR properly configured (paymentMethod='manual' AND qrCodeImageUrl exists)
+    const organizerManualQRConfigured = (organizerPaymentMethod === 'manual' || organizerPaymentMethod === 'manual_qr') && organizerHasManualQR;
+    
+    // Check event payment method (if specified)
+    const eventPaymentMethod = eventData.paymentMethod;
+    
+    console.log('Payment method check:', {
+      eventPaymentMethod,
+      organizerPaymentMethod,
+      organizerHasManualQR,
+      organizerHasToyyibPay,
+      organizerManualQRConfigured,
+      organizerQRUrl: organizerData.qrCodeImageUrl ? 'exists' : 'missing'
+    });
+    
+    // Determine which payment method to use
+    let useManualQR = false;
+    
+    // If organizer has manual QR properly configured, use it by default
+    // UNLESS event explicitly requires ToyyibPay AND organizer has ToyyibPay configured
+    if (organizerManualQRConfigured) {
+      // Use manual QR unless event explicitly requires ToyyibPay and organizer has it
+      if (eventPaymentMethod === 'toyyibpay' && organizerHasToyyibPay) {
+        useManualQR = false; // Event wants ToyyibPay and organizer has it
+      } else {
+        useManualQR = true; // Use manual QR (either event wants it, or event wants ToyyibPay but organizer doesn't have it, or no preference)
+      }
+    }
+    // If event explicitly requires manual QR, use it (even if organizer doesn't have it properly configured - will error later)
+    else if (eventPaymentMethod === 'manual' || eventPaymentMethod === 'manual_qr') {
+      useManualQR = true;
+    }
+    
+    // Handle manual QR payment
+    if (useManualQR) {
+      // Get QR code from event or organizer's profile
+      const qrCodeImageUrl = eventData.organizerQRCode || organizerData.qrCodeImageUrl;
+      
+      if (!qrCodeImageUrl || qrCodeImageUrl.trim() === '') {
+        return res.status(400).json({ 
+          error: 'Organizer QR code not configured',
+          hint: 'The organizer has not set up their QR code for manual payment. Please contact the organizer.'
+        });
+      }
+
+      // Create tickets with pending_payment status for manual payment
+      const tickets = await createTicketsHelper('pending_payment');
+      const ticketIds = tickets.map(t => t.id);
+
+      // Create payment record for manual payment
+      const paymentData = {
+        userId,
+        ticketIds,
+        eventId,
+        organizerId: eventData.organizerId,
+        amount: totalAmount,
+        platformFee: split.platformFee,
+        organizerAmount: split.organizerAmount,
+        totalAmount,
+        status: 'pending',
+        paymentMethod: 'manual_qr',
+        qrCodeImageUrl: qrCodeImageUrl,
+        paymentInstructions: eventData.paymentInstructions || '',
+        createdAt: new Date(),
+        processedAt: null
+      };
+
+      const paymentRef = await db.collection('payments').add(paymentData);
+      const paymentId = paymentRef.id;
+
+      return res.status(201).json({
+        message: 'Manual payment initiated. Please scan the QR code to make payment.',
+        paymentId: paymentRef.id,
+        totalAmount,
+        paymentMethod: 'manual_qr',
+        qrCodeImageUrl: qrCodeImageUrl,
+        paymentInstructions: eventData.paymentInstructions || '',
+        tickets: tickets.map(t => ({ id: t.id, status: t.status }))
+      });
+    }
+
+    // ToyyibPay payment flow (existing logic)
+    // Check if organizer has ToyyibPay configured
     if (!organizerData.categoryCode) {
       return res.status(400).json({ 
         error: 'Organizer payment method not configured',
-        hint: 'The organizer has not set up their payment method. Please contact the organizer.'
+        hint: 'The organizer has not set up their payment method. Please contact the organizer to set up ToyyibPay or manual QR code payment.'
       });
     }
 
@@ -816,19 +919,43 @@ export const updateClubPaymentSettings = async (req, res, next) => {
   try {
     const userId = req.user.uid;
     
-    if (req.user.role !== 'club') {
+    // Role check is now handled by authorize('club') middleware, but keep this as a safety check
+    // Get user role from database to ensure it's a club
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userData = userDoc.data();
+    const effectiveRole = req.user.role || userData.role;
+    
+    if (effectiveRole !== 'club') {
       return res.status(403).json({ error: 'Only club organizers can update payment settings' });
     }
 
     const { paymentMethod, qrCodeImageUrl, categoryCode } = req.body;
 
     const updateData = {
-      paymentMethod: paymentMethod || 'toyyibpay',
       updatedAt: new Date()
     };
 
-    if (qrCodeImageUrl) {
-      updateData.qrCodeImageUrl = qrCodeImageUrl;
+    // Determine payment method - if QR code is uploaded, set to manual
+    let finalPaymentMethod = paymentMethod;
+    if (qrCodeImageUrl && qrCodeImageUrl.trim() !== '') {
+      // If QR code is uploaded, payment method should be manual
+      finalPaymentMethod = 'manual';
+    }
+    
+    updateData.paymentMethod = finalPaymentMethod || 'toyyibpay';
+
+    // For manual payment method, QR code is required
+    if (finalPaymentMethod === 'manual' || finalPaymentMethod === 'manual_qr') {
+      if (!qrCodeImageUrl || !qrCodeImageUrl.trim()) {
+        return res.status(400).json({ 
+          error: 'QR code image is required for manual payment method' 
+        });
+      }
+      updateData.qrCodeImageUrl = qrCodeImageUrl.trim();
     }
 
     if (categoryCode) {
